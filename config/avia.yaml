@@ -25,6 +25,7 @@ mapping:
                    0, 0, 1]
 
 publish:
+    path_en: true
     scan_publish_en:  true       # false: close all the point cloud output
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
@@ -48,7 +49,7 @@ MANUAL_PPICP:
     plane_dist: 0.1
     max_iter: 10
 prior:
-    prior_T: [0.08, 0.08, 0.08]
-    prior_R: [1,0,0,
-              0,1,0,
+    prior_T: [14.5, -7.5, 0]
+    prior_R: [0.9689124217106,0.2474039592545,0,
+              -0.2474039592545,0.9689124217106,0,
               0,0,1]

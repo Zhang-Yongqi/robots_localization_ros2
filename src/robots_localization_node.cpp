@@ -1,6 +1,7 @@
 #include <common_lib.h>
 #include <ikd-Tree/ikd_Tree.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -26,7 +27,8 @@ string root_dir = ROOT_DIR;
 string lid_topic, imu_topic;
 
 bool time_sync_en = false;
-bool scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false;
+bool path_en = false, scan_pub_en = false, dense_pub_en = false,
+     scan_body_pub_en = false;
 bool extrinsic_est_en = true, runtime_pos_log = false, flg_exit = false;
 bool lidar_pushed, flg_first_scan = true, initialized = false, first_pub = true;
 
@@ -86,6 +88,8 @@ int kdtree_delete_counter = 0, add_point_size = 0;
 shared_ptr<LidarProcessor> p_lidar(new LidarProcessor());
 shared_ptr<IMUProcessor> p_imu(new IMUProcessor());
 
+nav_msgs::Path path;
+geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
 nav_msgs::Odometry odomAftMapped;
 
@@ -119,6 +123,7 @@ void loadConfig(const ros::NodeHandle &nh) {
   nh.param<vector<double>>("mapping/extrinsic_T", extrinT, vector<double>());
   nh.param<vector<double>>("mapping/extrinsic_R", extrinR, vector<double>());
 
+  nh.param<bool>("publish/path_en", path_en, true);
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<bool>("publish/dense_publish_en", dense_pub_en, true);
   nh.param<bool>("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
@@ -351,6 +356,21 @@ void pointBodyLidarToIMU(PointType const *const pi, PointType *const po) {
   po->intensity = pi->intensity;
 }
 
+void publish_path(const ros::Publisher pubPath) {
+  set_posestamp(msg_body_pose);
+  msg_body_pose.header.stamp = ros::Time().fromSec(lidar_end_time);
+  msg_body_pose.header.frame_id = "camera_init";
+  path.header.frame_id = "camera_init";
+
+  /*** if path is too large, the rvis will crash ***/
+  static int jjj = 0;
+  jjj++;
+  if (jjj % 10 == 0) {
+    path.poses.push_back(msg_body_pose);
+    pubPath.publish(path);
+  }
+}
+
 void publish_frame_world(const ros::Publisher &pubLaserCloudFull) {
   PointCloudXYZI::Ptr laserCloudWorld(global_map);
   sensor_msgs::PointCloud2 laserCloudmsg;
@@ -413,15 +433,15 @@ void h_share_model(state_ikfom &s,
                                    ? false
                                    : true;
     }
-    if (!point_selected_surf[i]) continue;  //如果该点不是有效点
+    if (!point_selected_surf[i]) continue;  // 如果该点不是有效点
 
     VF(4) pabcd;
     point_selected_surf[i] = false;
     // 拟合平面方程ax+by+cz+d=0并求解点到平面距离
     if (esti_plane(pabcd, points_near, 0.1f)) {
       float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y +
-                  pabcd(2) * point_world.z + pabcd(3);  //计算点到平面的距离
-      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());  //计算残差
+                  pabcd(2) * point_world.z + pabcd(3);  // 计算点到平面的距离
+      float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());  // 计算残差
 
       if (s > 0.9) {  // 如果残差大于阈值，则认为该点是有效点
         point_selected_surf[i] = true;
@@ -550,6 +570,7 @@ int main(int argc, char **argv) {
       nh.advertise<sensor_msgs::PointCloud2>("/laser_map", 100000);
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/odometry", 100000);
+  ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
 
   signal(SIGINT, SigHandle);
   ros::Rate rate(5000);
@@ -584,7 +605,7 @@ int main(int argc, char **argv) {
 
       /*** downsample the feature points in a scan ***/
       downSizeFilterSurf.setInputCloud(feats_undistort);
-      downSizeFilterSurf.filter(*feats_down_body);  //降采样
+      downSizeFilterSurf.filter(*feats_down_body);  // 降采样
       feats_down_size = feats_down_body->points.size();
       if (feats_down_size < 5) {
         ROS_WARN("No point, skip this scan!\n");
@@ -609,6 +630,7 @@ int main(int argc, char **argv) {
       publish_odometry(pubOdomAftMapped);
 
       /******* Publish points *******/
+      if (path_en) publish_path(pubPath);
       if (scan_pub_en && first_pub) {
         publish_frame_world(pubLaserCloudFull);
         first_pub = false;
