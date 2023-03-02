@@ -219,6 +219,14 @@ float calc_dist(PointType p1, PointType p2) {
   return d;
 }
 
+/**
+ * 拟合法向量，返回归一化法向量
+ * @tparam T
+ * @param pca_result 输出法向量
+ * @param point 近邻点
+ * @param threshold 平面距离原点阈值
+ * @return
+ */
 template <typename T>
 bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point,
                 const T &threshold) {
@@ -234,9 +242,10 @@ bool esti_plane(Matrix<T, 4, 1> &pca_result, const PointVector &point,
     A(j, 2) = point[j].z;
   }
 
-  Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+  Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b); // 求解Ax=b，即ax+by+cz=1
+  // 由于是截距式平面方程，(a,b,c)就是一个法向量
 
-  T n = normvec.norm();
+  T n = normvec.norm(); // 向量的范数，长度
   pca_result(0) = normvec(0) / n;
   pca_result(1) = normvec(1) / n;
   pca_result(2) = normvec(2) / n;
