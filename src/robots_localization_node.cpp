@@ -580,7 +580,11 @@ int main(int argc, char **argv) {
   // 通过一个函数（h_dyn_share_in）同时计算测量（z）、估计测量（h）、偏微分矩阵（h_x，h_v）和噪声协方差（R）
 
   /*** Map initialization ***/
-  string map_pcd = root_dir + "/map/map.pcd";
+  // string map_pcd = root_dir + "/map/map.pcd";
+  std::string map_pcd;
+  nh.param("map_file",map_pcd,root_dir + "../FAST_LIO/PCD/scans_fast.pcd");
+  std::string infoMsg = "[Robots Localization] Load Map:"+map_pcd;
+  ROS_INFO(infoMsg.c_str());
   if (pcl::io::loadPCDFile<PointType>(map_pcd, *global_map) == -1) {
     PCL_ERROR("Couldn't read file map.pcd\n");
     return (-1);
