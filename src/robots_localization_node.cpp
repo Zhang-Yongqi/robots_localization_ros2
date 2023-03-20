@@ -165,7 +165,7 @@ void loadConfig(const ros::NodeHandle &nh) {
 double timediff_lidar_wrt_imu = 0.0;  // lidar imu 时间差
 bool timediff_set_flg = false;        // 是否已经计算了时间差
 // livox激光雷达回调函数
-void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
+void livox_pcl_cbk(const robots_localization::LivoxMsg::ConstPtr &msg) {
   mtx_buffer.lock();
   scan_count++;
   if (msg->header.stamp.toSec() < last_timestamp_lidar) {

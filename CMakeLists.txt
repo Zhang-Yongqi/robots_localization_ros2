@@ -50,7 +50,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  livox_ros_driver
+  # livox_ros_driver
   message_generation
   eigen_conversions
 )
@@ -72,6 +72,13 @@ include_directories(
 add_message_files(
   FILES
   Pose6D.msg
+)
+# add livox lidar custom msgs
+add_message_files(
+  DIRECTORY msg/livox
+  FILES
+  CustomPoint.msg
+  LivoxMsg.msg 
 )
 
 generate_messages(
