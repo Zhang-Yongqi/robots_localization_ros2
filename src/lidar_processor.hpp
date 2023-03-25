@@ -1,8 +1,8 @@
 #pragma once
 
 // #include <livox_ros_driver/CustomMsg.h>
-#include <robots_localization/LivoxMsg.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <robots_localization/LivoxMsg.h>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 
@@ -73,7 +73,7 @@ struct EIGEN_ALIGN16 Point {
   uint32_t t;
   uint16_t reflectivity;  // 反射率
   uint8_t ring;           // 点所属的圈数
-  uint16_t ambient;       //没用
+  uint16_t ambient;       // 没用
   uint32_t range;         // 距离
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

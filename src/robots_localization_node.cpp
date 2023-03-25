@@ -94,6 +94,8 @@ geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
 nav_msgs::Odometry odomAftMapped;
 
+std::ofstream fout_pose;
+
 void SigHandle(int sig) {
   flg_exit = true;
   ROS_WARN("catch sig %d", sig);
@@ -345,6 +347,16 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
   transform.setRotation(q);
   br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp,
                                         "camera_init", "body"));
+
+  if (runtime_pos_log) {
+    fout_pose << lidar_end_time << ", " << odomAftMapped.pose.pose.position.x
+              << ", " << odomAftMapped.pose.pose.position.y << ", "
+              << odomAftMapped.pose.pose.position.z << ", "
+              << odomAftMapped.pose.pose.orientation.x << ", "
+              << odomAftMapped.pose.pose.orientation.y << ", "
+              << odomAftMapped.pose.pose.orientation.z << ", "
+              << odomAftMapped.pose.pose.orientation.w << std::endl;
+  }
 }
 
 // pi:激光雷达坐标系
@@ -554,6 +566,9 @@ int main(int argc, char **argv) {
 
   /*** System initialization ***/
   loadConfig(nh);
+  if (runtime_pos_log) {
+    fout_pose.open(root_dir + "/log/localization.txt", std::ios::out);
+  }
 
   memset(point_selected_surf, true, sizeof(point_selected_surf));
   memset(res_last, -1000.0f, sizeof(res_last));
@@ -582,8 +597,8 @@ int main(int argc, char **argv) {
   /*** Map initialization ***/
   // string map_pcd = root_dir + "/map/map.pcd";
   std::string map_pcd;
-  nh.param("map_file",map_pcd,root_dir + "../FAST_LIO/PCD/scans_fast.pcd");
-  std::string infoMsg = "[Robots Localization] Load Map:"+map_pcd;
+  nh.param("map_file", map_pcd, root_dir + "../FAST_LIO/PCD/scans_fast.pcd");
+  std::string infoMsg = "[Robots Localization] Load Map:" + map_pcd;
   ROS_INFO(infoMsg.c_str());
   if (pcl::io::loadPCDFile<PointType>(map_pcd, *global_map) == -1) {
     PCL_ERROR("Couldn't read file map.pcd\n");
