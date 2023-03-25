@@ -9,7 +9,7 @@
     <param name="filter_size_surf" type="double" value="0.5" />
     <param name="filter_size_map" type="double" value="0.5" />
     <param name="cube_side_length" type="double" value="1000" />
-    <param name="runtime_pos_log_enable" type="bool" value="0" />
+    <param name="runtime_pos_log_enable" type="bool" value="false" />
     
     <node pkg="robots_localization" type="robots_localization" name="robots_localization" output="screen" /> 
 

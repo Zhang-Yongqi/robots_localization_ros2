@@ -26,7 +26,7 @@ class IMUProcessor {
 
   void reset();
 
-  void set_init_pose(const V3F &poseT, const M3F &poseR);
+  void set_init_pose(const V3F &poseT);
 
   void set_extrinsic(const V3D &transl, const M3D &rot);
 
@@ -62,7 +62,7 @@ class IMUProcessor {
   double first_lidar_time;
 
   string method;
-  float res, step_size, trans_eps, max_dist, eculi_eps, plane_dist;
+  float res, step_size, trans_eps, eculi_eps, plane_dist;
   int max_iter;
 
  private:
@@ -88,6 +88,7 @@ class IMUProcessor {
   bool b_first_frame_;
   V3D mean_acc;
   V3D mean_gyr;
+  mutex mtx_error;
 
   int init_iter_num;
 };
@@ -116,8 +117,8 @@ void IMUProcessor::reset() {
   Q = process_noise_cov();
 }
 
-void IMUProcessor::set_init_pose(const V3F &poseT, const M3F &poseR) {
-  init_pose_last.block<3, 3>(0, 0) = poseR;
+void IMUProcessor::set_init_pose(const V3F &poseT) {
+  init_pose_last.block<3, 3>(0, 0) = Eye3f;
   init_pose_last.block<3, 1>(0, 3) = poseT;
 }
 
@@ -158,6 +159,7 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
   V3F translation;
   rotation_matrix = predict_pose.block<3, 3>(0, 0);
   translation = predict_pose.block<3, 1>(0, 3);
+  float whole_dist = 0.0;
 
   for (int iter = 0; iter < max_iter; iter++) {
     pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
@@ -166,12 +168,11 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
     H.setZero();
     b.setZero();
 
+    whole_dist = 0.0;
     int point_num = trans_cloud->size();
 #ifdef MP_EN
     omp_set_num_threads(MP_PROC_NUM);
-    // none默认不共享，private的变量是在每个线程中有副本，避免竞争风险
-#pragma omp parallel for default(none) private( \
-    point_num, scan, trans_cloud, kdtree, knn_num, rotation_matrix, H, b)
+#pragma omp parallel for
 #endif
     for (size_t i = 0; i < point_num; i++) {
       auto ori_point = scan->points[i];
@@ -184,7 +185,6 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
       std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
       // dist是临近点到搜索点trans_point的距离
       kdtree.Nearest_Search(trans_point, knn_num, points_near, dist);
-      if (dist[0] > max_dist) continue;
 
       Eigen::Vector3f closest_point =
           Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
@@ -192,6 +192,10 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
       Eigen::Vector3f error_dist =
           Eigen::Vector3f(trans_point.x, trans_point.y, trans_point.z) -
           closest_point;
+      whole_dist +=
+          (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]),
+          (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]),
+          (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
 
       Eigen::Matrix<float, 3, 6> J(Eigen::Matrix<float, 3, 6>::Zero());
       J.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
@@ -210,33 +214,7 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
     predict_pose.block<3, 3>(0, 0) = rotation_matrix;
     predict_pose.block<3, 1>(0, 3) = translation;
   }
-
-  float whole_dist = 0.0;
-  int point_num = trans_cloud->size();
-  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-#ifdef MP_EN
-  omp_set_num_threads(MP_PROC_NUM);
-  // none默认不共享，private的变量是在每个线程中有副本，避免竞争风险
-#pragma omp parallel for default(none) private(point_num, scan, trans_cloud, \
-                                               kdtree, knn_num,              \
-                                               rotation_matrix, whole_dist)
-#endif
-  for (size_t i = 0; i < point_num; i++) {
-    auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point)) continue;
-    auto trans_point = trans_cloud->points[i];
-    std::vector<float> dist;
-    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-    kdtree.Nearest_Search(trans_point, knn_num, points_near, dist);
-    if (dist[0] > max_dist) continue;
-
-    Eigen::Vector3f closest_point =
-        Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
-    whole_dist +=
-        (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]),
-        (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]),
-        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-  }
+  std::cout << "whole dist: " << whole_dist << std::endl;
   return whole_dist;
 }
 
@@ -248,6 +226,7 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
   V3F translation;
   rotation_matrix = predict_pose.block<3, 3>(0, 0);
   translation = predict_pose.block<3, 1>(0, 3);
+  float whole_dist = 0.0;
 
   for (int iter = 0; iter < max_iter; iter++) {
     pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
@@ -256,6 +235,7 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
     H.setZero();
     b.setZero();
 
+    whole_dist = 0.0;
     int point_num = trans_cloud->size();
 #ifdef MP_EN
     omp_set_num_threads(MP_PROC_NUM);
@@ -268,28 +248,36 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
       std::vector<float> dist;
       std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
       kdtree.Nearest_Search(trans_point, NUM_MATCH_POINTS, points_near, dist);
-      if (dist[0] > max_dist) continue;
 
       VF(4) abcd;
-      if (!esti_plane(abcd, points_near, plane_dist)) {
-        continue;
-      } else {
-        float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
-                           abcd[2] * trans_point.z + abcd[3];
-
-        Eigen::Matrix<float, 1, 6> J(Eigen::Matrix<float, 1, 6>::Zero());
-        J.block<1, 3>(0, 0) << abcd[0], abcd[1], abcd[2];
-        Eigen::Matrix<float, 3, 3> tmp =
-            -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(
-                                   ori_point.x, ori_point.y, ori_point.z));
-        J.block<1, 3>(0, 3)
-            << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) + abcd[2] * tmp(2, 0),
-            abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
-            abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
-
-        H += J.transpose() * J;
-        b += -J.transpose() * error_dist;
+      esti_plane(abcd, points_near, plane_dist);
+      float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
+                             abcd[2] * trans_point.z + abcd[3];
+      if (error_dist < 0.0)
+      {
+        mtx_error.lock();
+        whole_dist += -error_dist;
+        mtx_error.unlock();
       }
+      else
+      {
+        mtx_error.lock();
+        whole_dist += error_dist;
+        mtx_error.unlock();
+      }
+
+      Eigen::Matrix<float, 1, 6> J(Eigen::Matrix<float, 1, 6>::Zero());
+      J.block<1, 3>(0, 0) << abcd[0], abcd[1], abcd[2];
+      Eigen::Matrix<float, 3, 3> tmp =
+          -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(
+                                 ori_point.x, ori_point.y, ori_point.z));
+      J.block<1, 3>(0, 3)
+          << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) + abcd[2] * tmp(2, 0),
+          abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
+          abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
+
+      H += J.transpose() * J;
+      b += -J.transpose() * error_dist;
     }
 
     Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
@@ -298,38 +286,7 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
     predict_pose.block<3, 3>(0, 0) = rotation_matrix;
     predict_pose.block<3, 1>(0, 3) = translation;
   }
-
-  float whole_dist = 0.0;
-  int point_num = trans_cloud->size();
-  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-#ifdef MP_EN
-  omp_set_num_threads(MP_PROC_NUM);
-  // none默认不共享，private的变量是在每个线程中有副本，避免竞争风险
-#pragma omp parallel for default(none) private( \
-    point_num, scan, trans_cloud, kdtree, rotation_matrix, whole_dist)
-#endif
-  for (size_t i = 0; i < point_num; i++) {
-    auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point)) continue;
-    auto trans_point = trans_cloud->points[i];
-    std::vector<float> dist;
-    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-    kdtree.Nearest_Search(trans_point, NUM_MATCH_POINTS, points_near, dist);
-    if (dist[0] > max_dist) continue;
-
-    VF(4) abcd;
-    if (!esti_plane(abcd, points_near, plane_dist)) {
-      continue;
-    } else {
-      float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
-                         abcd[2] * trans_point.z + abcd[3];
-      if (error_dist < 0.0) {
-        whole_dist += -error_dist;
-      } else {
-        whole_dist += error_dist;
-      }
-    }
-  }
+  std::cout << "whole dist: " << whole_dist << std::endl;
   return whole_dist;
 }
 
@@ -402,8 +359,10 @@ bool IMUProcessor::init_pose(
   float error_min = 1000000.0, error = 0.0;
   M4F prior_with_min_error = M4F::Zero();
   for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]);
-       i++) {
+       i++) {    
     float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
+    //std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
+
     M4F prior_with_yaw = M4F::Zero();
     M3F rotation_yaw = M3F::Zero();
     rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw),

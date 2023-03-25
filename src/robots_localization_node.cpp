@@ -47,10 +47,8 @@ int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int feats_down_size = 0;
 
 vector<float> priorT(3, 0.0);
-vector<float> priorR(9, 0.0);
 vector<float> YAW_RANGE(3, 0.0);
 V3F prior_T(Zero3f);
-M3F prior_R(Eye3f);
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
 V3D Lidar_T_wrt_IMU(Zero3d);
@@ -140,21 +138,17 @@ void loadConfig(const ros::NodeHandle &nh) {
   nh.param<double>("cube_side_length", cube_len, 200);
   nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
 
-  nh.param<string>("init_method", p_imu->method, "NDT");
+  nh.param<string>("init_method", p_imu->method, "PPICP");
   if (p_imu->method == "NDT") {
   } else if (p_imu->method == "ICP") {
-    nh.param<float>("ICP/max_dist", p_imu->max_dist, 1.0);
     nh.param<int>("ICP/max_iter", p_imu->max_iter, 10);
   } else if (p_imu->method == "PPICP") {
-    nh.param<float>("PPICP/max_dist", p_imu->max_dist, 1.0);
-    nh.param<float>("PPICP/plane_dist", p_imu->plane_dist, 1.0);
+    nh.param<float>("PPICP/plane_dist", p_imu->plane_dist, 0.1);
     nh.param<int>("PPICP/max_iter", p_imu->max_iter, 10);
   } else {
     std::cerr << "Not valid init method!" << std::endl;
   }
-  nh.param<vector<float>>("prior/prior_T", priorT, vector<float>());
-  nh.param<vector<float>>("prior/prior_R", priorR, vector<float>());
-  nh.param<vector<float>>("YAW_RANGE", YAW_RANGE, vector<float>());
+  nh.param<vector<float>>("prior/prior_T", priorT, vector<float>(3, 0.0));
 }
 
 double timediff_lidar_wrt_imu = 0.0;  // lidar imu 时间差
@@ -569,15 +563,16 @@ int main(int argc, char **argv) {
                                  filter_size_surf_min);
 
   prior_T << VEC_FROM_ARRAY(priorT);
-  prior_R << MAT_FROM_ARRAY(priorR);
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
-  p_imu->set_init_pose(prior_T, prior_R);
+  p_imu->set_init_pose(prior_T);
   p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
   p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
   p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
   p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
   p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+  YAW_RANGE[1] = 0.35;
+  YAW_RANGE[2] = 6.3;
 
   double epsi[23] = {0.001};
   fill(epsi, epsi + 23, 0.001);
@@ -590,7 +585,7 @@ int main(int argc, char **argv) {
   /*** Map initialization ***/
   // string map_pcd = root_dir + "/map/map.pcd";
   std::string map_pcd;
-  nh.param("map_file", map_pcd, root_dir + "../FAST_LIO/PCD/scans_fast.pcd");
+  nh.param("map_file", map_pcd, root_dir + "/map/map.pcd");
   std::string infoMsg = "[Robots Localization] Load Map:" + map_pcd;
   ROS_INFO(infoMsg.c_str());
   if (pcl::io::loadPCDFile<PointType>(map_pcd, *global_map) == -1) {
