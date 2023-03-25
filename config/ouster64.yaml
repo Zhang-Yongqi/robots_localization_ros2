@@ -31,21 +31,12 @@ publish:
     dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
 
-init_method: MANUAL_PPICP
+init_method: PPICP
 NDT:
-    res: 1.0
-    step_size: 0.1
-    trans_eps: 0.01
-    max_iter: 10
 ICP:
     max_dist: 1.0
-    trans_eps: 0.01
-    eculi_eps: 0.01
     max_iter: 10
-MANUAL_ICP:
-    max_dist: 1.0 
-    max_iter: 10
-MANUAL_PPICP:
+PPICP:
     max_dist: 1.0 
     plane_dist: 0.1
     max_iter: 10
@@ -54,3 +45,4 @@ prior:
     prior_R: [1 ,0, 0,
               0 ,1, 0,
               0 ,0, 1]
+YAW_RANGE: [0.0, 0.1745329, 6.2831853] #初始化中偏航角下限，步长，上限，单位rad

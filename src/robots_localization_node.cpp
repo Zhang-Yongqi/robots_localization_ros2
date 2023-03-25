@@ -48,6 +48,7 @@ int feats_down_size = 0;
 
 vector<float> priorT(3, 0.0);
 vector<float> priorR(9, 0.0);
+vector<float> YAW_RANGE(3, 0.0);
 V3F prior_T(Zero3f);
 M3F prior_R(Eye3f);
 vector<double> extrinT(3, 0.0);
@@ -139,29 +140,21 @@ void loadConfig(const ros::NodeHandle &nh) {
   nh.param<double>("cube_side_length", cube_len, 200);
   nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
 
-  nh.param<string>("init_method", p_imu->method, "ICP");
+  nh.param<string>("init_method", p_imu->method, "NDT");
   if (p_imu->method == "NDT") {
-    nh.param<float>("NDT/res", p_imu->res, 1.0);
-    nh.param<float>("NDT/step_size", p_imu->step_size, 0.1);
-    nh.param<float>("NDT/trans_eps", p_imu->trans_eps, 0.01);
-    nh.param<int>("NDT/max_iter", p_imu->max_iter, 10);
   } else if (p_imu->method == "ICP") {
     nh.param<float>("ICP/max_dist", p_imu->max_dist, 1.0);
-    nh.param<float>("ICP/trans_eps", p_imu->trans_eps, 0.01);
-    nh.param<float>("ICP/eculi_eps", p_imu->eculi_eps, 0.01);
     nh.param<int>("ICP/max_iter", p_imu->max_iter, 10);
-  } else if (p_imu->method == "MANUAL_ICP") {
-    nh.param<float>("MANUAL_ICP/max_dist", p_imu->max_dist, 1.0);
-    nh.param<int>("MANUAL_ICP/max_iter", p_imu->max_iter, 10);
-  } else if (p_imu->method == "MANUAL_PPICP") {
-    nh.param<float>("MANUAL_PPICP/max_dist", p_imu->max_dist, 1.0);
-    nh.param<float>("MANUAL_PPICP/plane_dist", p_imu->plane_dist, 1.0);
-    nh.param<int>("MANUAL_PPICP/max_iter", p_imu->max_iter, 10);
+  } else if (p_imu->method == "PPICP") {
+    nh.param<float>("PPICP/max_dist", p_imu->max_dist, 1.0);
+    nh.param<float>("PPICP/plane_dist", p_imu->plane_dist, 1.0);
+    nh.param<int>("PPICP/max_iter", p_imu->max_iter, 10);
   } else {
     std::cerr << "Not valid init method!" << std::endl;
   }
   nh.param<vector<float>>("prior/prior_T", priorT, vector<float>());
   nh.param<vector<float>>("prior/prior_R", priorR, vector<float>());
+  nh.param<vector<float>>("YAW_RANGE", YAW_RANGE, vector<float>());
 }
 
 double timediff_lidar_wrt_imu = 0.0;  // lidar imu 时间差
@@ -647,7 +640,8 @@ int main(int argc, char **argv) {
 
       // 初始化位姿
       if (!initialized) {
-        initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree);
+        initialized =
+            p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
         continue;
       }
 
