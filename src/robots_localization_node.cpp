@@ -1,4 +1,5 @@
 #include <common_lib.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <ikd-Tree/ikd_Tree.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -92,6 +93,7 @@ nav_msgs::Path path;
 geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
 nav_msgs::Odometry odomAftMapped;
+geometry_msgs::TwistStamped velocity;
 
 std::ofstream fout_pose;
 
@@ -416,6 +418,15 @@ void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body) {
   publish_count -= PUBFRAME_PERIOD;
 }
 
+void publish_velocity(const ros::Publisher &pubVelo) {
+  velocity.header.frame_id = "camera_init";
+  velocity.header.stamp = ros::Time().fromSec(lidar_end_time);
+  velocity.twist.linear.x = state_point.vel(0);
+  velocity.twist.linear.y = state_point.vel(1);
+  velocity.twist.linear.z = state_point.vel(2);
+  pubVelo.publish(velocity);
+}
+
 // 观测模型
 void h_share_model(state_ikfom &s,
                    esekfom::dyn_share_datastruct<double> &ekfom_data) {
@@ -616,6 +627,8 @@ int main(int argc, char **argv) {
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/odometry", 100000);
   ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
+  ros::Publisher pubVelo =
+      nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
 
   signal(SIGINT, SigHandle);
   ros::Rate rate(5000);
@@ -674,6 +687,7 @@ int main(int argc, char **argv) {
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped);
+      publish_velocity(pubVelo);
 
       /******* Publish points *******/
       if (path_en) publish_path(pubPath);
