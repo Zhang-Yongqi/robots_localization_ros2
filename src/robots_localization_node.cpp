@@ -61,6 +61,7 @@ pcl::VoxelGrid<PointType> downSizeFilterSurf;
 MeasureGroup Measures;
 esekfom::esekf<state_ikfom, 12, input_ikfom> kf;
 state_ikfom state_point;
+state_ikfom state_point_imu;
 vect3 pos_lid;
 
 mutex mtx_buffer;
@@ -92,7 +93,9 @@ shared_ptr<IMUProcessor> p_imu(new IMUProcessor());
 nav_msgs::Path path;
 geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
+geometry_msgs::Quaternion geoQuatIMU;
 nav_msgs::Odometry odomAftMapped;
+nav_msgs::Odometry odomAftMappedIMU;
 geometry_msgs::TwistStamped velocity;
 
 std::ofstream fout_pose;
@@ -230,6 +233,27 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer.clear();
   }
+  msg->linear_acceleration.x = std::max(msg->linear_acceleration.x, -10.0);
+  msg->linear_acceleration.x = std::min(msg->linear_acceleration.x, 10.0);
+  msg->linear_acceleration.y = std::max(msg->linear_acceleration.y, -10.0);
+  msg->linear_acceleration.y = std::min(msg->linear_acceleration.y, 10.0);
+  msg->linear_acceleration.z =
+      std::max(msg->linear_acceleration.z - 9.81, -5.0) + 9.81;
+  msg->linear_acceleration.z =
+      std::min(msg->linear_acceleration.z - 9.81, 5.0) + 9.81;
+  msg->angular_velocity.x = std::max(msg->angular_velocity.x, -1.0);
+  msg->angular_velocity.x = std::min(msg->angular_velocity.x, 1.0);
+  msg->angular_velocity.y = std::max(msg->angular_velocity.y, -1.0);
+  msg->angular_velocity.y = std::min(msg->angular_velocity.y, 1.0);
+  msg->angular_velocity.z = std::max(msg->angular_velocity.z, -2.0);
+  msg->angular_velocity.z = std::min(msg->angular_velocity.z, 2.0);
+  // std::cout << "imu data: " << msg->linear_acceleration.x << ", "
+  //           << msg->linear_acceleration.y << ", " <<
+  //           msg->linear_acceleration.z
+  //           << ". " << std::endl
+  //           << msg->angular_velocity.x << ", " << msg->angular_velocity.y
+  //           << ", " << msg->angular_velocity.z << ". " << std::endl
+  //           << std::endl;
   last_timestamp_imu = timestamp;
   imu_buffer.push_back(msg);
   mtx_buffer.unlock();
@@ -305,6 +329,17 @@ void set_posestamp(T &out) {
   out.pose.orientation.w = geoQuat.w;
 }
 
+template <typename T>
+void set_posestamp_imu(T &out) {
+  out.pose.position.x = state_point_imu.pos(0);
+  out.pose.position.y = state_point_imu.pos(1);
+  out.pose.position.z = state_point_imu.pos(2);
+  out.pose.orientation.x = geoQuatIMU.x;
+  out.pose.orientation.y = geoQuatIMU.y;
+  out.pose.orientation.z = geoQuatIMU.z;
+  out.pose.orientation.w = geoQuatIMU.w;
+}
+
 // 通过pubOdomAftMapped发布位姿odomAftMapped，同时计算协方差存在kf中，同tf计算位姿
 void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
   odomAftMapped.header.frame_id = "camera_init";
@@ -346,6 +381,14 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
               << odomAftMapped.pose.pose.orientation.z << ", "
               << odomAftMapped.pose.pose.orientation.w << std::endl;
   }
+}
+
+void publish_odometry_imu(const ros::Publisher &pubOdomAftMappedIMU) {
+  odomAftMappedIMU.header.frame_id = "camera_init";
+  odomAftMappedIMU.child_frame_id = "body";
+  odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
+  set_posestamp_imu(odomAftMappedIMU.pose);
+  pubOdomAftMappedIMU.publish(odomAftMappedIMU);
 }
 
 // pi:激光雷达坐标系
@@ -594,9 +637,9 @@ int main(int argc, char **argv) {
   // 通过一个函数（h_dyn_share_in）同时计算测量（z）、估计测量（h）、偏微分矩阵（h_x，h_v）和噪声协方差（R）
 
   /*** Map initialization ***/
-  // string map_pcd = root_dir + "/map/map.pcd";
+  // string map_pcd = root_dir + "map/map.pcd";
   std::string map_pcd;
-  nh.param("map_file", map_pcd, root_dir + "/map/map.pcd");
+  nh.param("map_file", map_pcd, root_dir + "map/map.pcd");
   std::string infoMsg = "[Robots Localization] Load Map:" + map_pcd;
   ROS_INFO(infoMsg.c_str());
   if (pcl::io::loadPCDFile<PointType>(map_pcd, *global_map) == -1) {
@@ -626,12 +669,14 @@ int main(int argc, char **argv) {
       nh.advertise<sensor_msgs::PointCloud2>("/laser_map", 100000);
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/odometry", 100000);
+  ros::Publisher pubOdomAftMappedIMU =
+      nh.advertise<nav_msgs::Odometry>("/odometry_imu", 100000);
   ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
   ros::Publisher pubVelo =
       nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
 
   signal(SIGINT, SigHandle);
-  ros::Rate rate(5000);
+  ros::Rate rate(200);
   bool status = ros::ok();
 
   while (status) {
@@ -698,6 +743,16 @@ int main(int argc, char **argv) {
       if (scan_pub_en && scan_body_pub_en)
         publish_frame_body(pubLaserCloudFull_body);
     }
+
+    state_point_imu = kf.get_x();
+    geoQuatIMU.x = state_point_imu.rot.coeffs()[0];
+    geoQuatIMU.y = state_point_imu.rot.coeffs()[1];
+    geoQuatIMU.z = state_point_imu.rot.coeffs()[2];
+    geoQuatIMU.w = state_point_imu.rot.coeffs()[3];
+    if (last_timestamp_imu > 0.0) {
+      publish_odometry_imu(pubOdomAftMappedIMU);
+    }
+
     status = ros::ok();
     rate.sleep();
   }

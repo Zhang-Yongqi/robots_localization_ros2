@@ -30,11 +30,11 @@ publish:
     dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
-init_method: PPICP
-NDT:
-ICP:
-    max_iter: 10
-PPICP:
-    plane_dist: 0.1
-    max_iter: 10
-prior_T: [0, 0, 0]
+# init_method: PPICP
+# NDT:
+# ICP:
+#     max_iter: 10
+# PPICP:
+#     plane_dist: 0.1
+#     max_iter: 10
+# prior_T: [0, 0, 0]

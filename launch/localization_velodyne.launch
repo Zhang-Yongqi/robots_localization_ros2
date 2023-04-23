@@ -5,11 +5,11 @@
 
     <rosparam command="load" file="$(find robots_localization)/config/velodyne.yaml" />
 
-    <param name="max_iteration" type="int" value="3" />
+    <!-- <param name="max_iteration" type="int" value="3" />
     <param name="filter_size_surf" type="double" value="0.5" />
     <param name="filter_size_map" type="double" value="0.5" />
     <param name="cube_side_length" type="double" value="1000" />
-    <param name="runtime_pos_log_enable" type="bool" value="0" />
+    <param name="runtime_pos_log_enable" type="bool" value="0" /> -->
     
     <node pkg="robots_localization" type="robots_localization" name="robots_localization" output="screen" /> 
 

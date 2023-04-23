@@ -192,10 +192,12 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
       Eigen::Vector3f error_dist =
           Eigen::Vector3f(trans_point.x, trans_point.y, trans_point.z) -
           closest_point;
-      whole_dist +=
-          (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]),
-          (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]),
-          (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
+      whole_dist += (trans_point.x - closest_point[0]) *
+                    (trans_point.x - closest_point[0]),
+          (trans_point.y - closest_point[1]) *
+              (trans_point.y - closest_point[1]),
+          (trans_point.z - closest_point[2]) *
+              (trans_point.z - closest_point[2]);
 
       Eigen::Matrix<float, 3, 6> J(Eigen::Matrix<float, 3, 6>::Zero());
       J.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
@@ -252,15 +254,12 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
       VF(4) abcd;
       esti_plane(abcd, points_near, plane_dist);
       float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
-                             abcd[2] * trans_point.z + abcd[3];
-      if (error_dist < 0.0)
-      {
+                         abcd[2] * trans_point.z + abcd[3];
+      if (error_dist < 0.0) {
         mtx_error.lock();
         whole_dist += -error_dist;
         mtx_error.unlock();
-      }
-      else
-      {
+      } else {
         mtx_error.lock();
         whole_dist += error_dist;
         mtx_error.unlock();
@@ -271,8 +270,8 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
       Eigen::Matrix<float, 3, 3> tmp =
           -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(
                                  ori_point.x, ori_point.y, ori_point.z));
-      J.block<1, 3>(0, 3)
-          << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) + abcd[2] * tmp(2, 0),
+      J.block<1, 3>(0, 3) << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) +
+                                 abcd[2] * tmp(2, 0),
           abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
           abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
 
@@ -359,9 +358,9 @@ bool IMUProcessor::init_pose(
   float error_min = 1000000.0, error = 0.0;
   M4F prior_with_min_error = M4F::Zero();
   for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]);
-       i++) {    
+       i++) {
     float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
-    //std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
+    // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
 
     M4F prior_with_yaw = M4F::Zero();
     M3F rotation_yaw = M3F::Zero();
@@ -384,6 +383,9 @@ bool IMUProcessor::init_pose(
     if (error < error_min) {
       error_min = error;
       prior_with_min_error = prior_with_yaw;
+    }
+    if (error_min < 100) {
+      break;
     }
   }
   init_pose_curr = prior_with_min_error;
