@@ -1,0 +1,17 @@
+<launch>
+    <!-- <param name="rot_w" type="double" value=""/>
+    <param name="rot_x" type="double" value=""/>
+    <param name="rot_y" type="double" value="0"/>
+    <param name="rot_z" type="double" value="0"/>
+
+    <param name="trans_x" type="double" value="0"/>
+    <param name="trans_y" type="double" value="0"/>
+    <param name="trans_z" type="double" value="0"/> -->
+    <param name="yaw_angle" type="double" value="87.7422"/>
+
+    <param name="source_pcd" type="string" value="$(find fast_lio)/PCD/scans_3_25.pcd"/>
+    <param name="output_pcd" type="string" value="$(find fast_lio)/PCD/scans_3_25_std3.pcd"/>
+
+    <node pkg="robots_localization" type="transform_map" name="transform_map" output="screen"/>
+    
+</launch>

@@ -1,5 +1,5 @@
 <launch>
-<!-- Launch file for ouster OS2-64 LiDAR -->
+    <!-- Launch file for ouster OS2-64 LiDAR -->
 
     <arg name="rviz" default="true" />
 
@@ -9,12 +9,17 @@
     <param name="filter_size_surf" type="double" value="0.5" />
     <param name="filter_size_map" type="double" value="0.5" />
     <param name="cube_side_length" type="double" value="1000" />
-    <param name="runtime_pos_log_enable" type="bool" value="false" />
-    
-    <node pkg="robots_localization" type="robots_localization" name="robots_localization" output="screen" /> 
+    <param name="runtime_pos_log_enable" type="bool" value="0" />
+    <!-- <param name="pcd_path" type="string" value="../FAST_LIO/PCD/scans.pcd" /> -->
+    <param name="pcd_path" type="string" value="$(find fast_lio)/PCD/scans_3_25_std3.pcd" />
+
+
+    <node pkg="robots_localization" type="robots_localization" name="robots_localization"
+        output="screen" />
 
     <group if="$(arg rviz)">
-    <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz" args="-d $(find robots_localization)/rviz/localization.rviz" />
+        <node launch-prefix="nice" pkg="rviz" type="rviz" name="rviz"
+            args="-d $(find robots_localization)/rviz/localization.rviz" />
     </group>
 
 </launch>

@@ -96,3 +96,6 @@ add_executable(robots_localization src/robots_localization_node.cpp include/ikd-
 target_link_libraries(robots_localization ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} fmt)
 target_include_directories(robots_localization PRIVATE ${PYTHON_INCLUDE_DIRS})
 
+add_executable(transform_map src/transform_map.cpp)
+target_link_libraries(transform_map ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES})
+

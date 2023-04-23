@@ -25,7 +25,7 @@
 #define MOV_THRESHOLD (1.5f)
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic;
+string lid_topic, imu_topic, wheel_topic;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
@@ -37,7 +37,8 @@ double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
-double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0;
+double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
+       last_timestamp_wheel = -1.0;
 double lidar_end_time = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 
@@ -69,6 +70,7 @@ condition_variable sig_buffer;
 deque<double> time_buffer;                     // 激光雷达数据
 deque<PointCloudXYZI::Ptr> lidar_buffer;       // 雷达数据队列
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;  // IMU数据队列
+deque<geometry_msgs::Vector3> wheel_buffer;    // 轮速计数据队列
 
 // PointCloudXYZI: 点云坐标 + 信号强度形式
 PointCloudXYZI::Ptr global_map(new PointCloudXYZI());
@@ -110,6 +112,7 @@ void SigHandle(int sig) {
 void loadConfig(const ros::NodeHandle &nh) {
   nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
   nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
+  nh.param<string>("common/wheel_topic", wheel_topic, "/slaver/wheel_state");
   nh.param<bool>("common/time_sync_en", time_sync_en, false);
   nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu,
                    0.0);
@@ -258,6 +261,21 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
   imu_buffer.push_back(msg);
   mtx_buffer.unlock();
   sig_buffer.notify_all();
+}
+
+void wheel_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in) {
+  // msg_in->z = (float)ros::Time::now().toSec();
+  // double timestamp = msg_in->z.toSec();
+
+  // // 上锁
+  // mtx_buffer.lock();
+  // if (timestamp < last_timestamp_wheel) {
+  //   ROS_WARN("wheel loop back, clear buffer");
+  //   wheel_buffer.clear();
+  // }
+  // last_timestamp_wheel = timestamp;
+  // wheel_buffer.push_back(msg_in);
+  // mtx_buffer.unlock();
 }
 
 double lidar_mean_scantime = 0.0;  // 雷达扫描一帧平均时间
@@ -461,6 +479,22 @@ void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body) {
   publish_count -= PUBFRAME_PERIOD;
 }
 
+void publish_frame_world_local(const ros::Publisher &pubLaserCloudFull_world) {
+  // int size = feats_undistort->points.size();
+  // PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+  // for (int i = 0; i < size; i++) {
+  //   pointBodyToWorld(&feats_undistort->points[i],
+  //                    &laserCloudIMUBody->points[i]);
+  // }
+
+  // sensor_msgs::PointCloud2 laserCloudmsg;
+  // pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
+  // laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+  // laserCloudmsg.header.frame_id = "camera_init";
+  // pubLaserCloudFull_world.publish(laserCloudmsg);
+  // publish_count -= PUBFRAME_PERIOD;
+}
+
 void publish_velocity(const ros::Publisher &pubVelo) {
   velocity.header.frame_id = "camera_init";
   velocity.header.stamp = ros::Time().fromSec(lidar_end_time);
@@ -660,11 +694,14 @@ int main(int argc, char **argv) {
           ? nh.subscribe(lid_topic, 200000, livox_pcl_cbk)
           : nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
   ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+  ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
 
   ros::Publisher pubLaserCloudFull =
       nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
   ros::Publisher pubLaserCloudFull_body =
       nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_body", 100000);
+  ros::Publisher pubLaserCloudFull_world =
+      nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered_world", 100000);
   ros::Publisher pubLaserCloudMap =
       nh.advertise<sensor_msgs::PointCloud2>("/laser_map", 100000);
   ros::Publisher pubOdomAftMapped =
@@ -740,8 +777,10 @@ int main(int argc, char **argv) {
         publish_frame_world(pubLaserCloudFull);
         first_pub = false;
       }
-      if (scan_pub_en && scan_body_pub_en)
+      if (scan_pub_en && scan_body_pub_en) {
         publish_frame_body(pubLaserCloudFull_body);
+        publish_frame_world_local(pubLaserCloudFull_world);
+      }
     }
 
     state_point_imu = kf.get_x();
