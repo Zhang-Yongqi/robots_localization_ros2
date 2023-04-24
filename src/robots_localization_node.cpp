@@ -38,7 +38,7 @@ double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
 double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
-       last_timestamp_wheel = -1.0;
+       last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
 double lidar_end_time = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 
@@ -401,14 +401,6 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
   }
 }
 
-void publish_odometry_imu(const ros::Publisher &pubOdomAftMappedIMU) {
-  odomAftMappedIMU.header.frame_id = "camera_init";
-  odomAftMappedIMU.child_frame_id = "body";
-  odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
-  set_posestamp_imu(odomAftMappedIMU.pose);
-  pubOdomAftMappedIMU.publish(odomAftMappedIMU);
-}
-
 // pi:激光雷达坐标系
 // 函数功能：激光雷达坐标点转到世界坐标系
 // state_point.offset_R_L_I*p_body + state_point.offset_T_L_I:转到IMU坐标系
@@ -713,7 +705,7 @@ int main(int argc, char **argv) {
       nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
 
   signal(SIGINT, SigHandle);
-  ros::Rate rate(200);
+  ros::Rate rate(5000);
   bool status = ros::ok();
 
   while (status) {
@@ -783,13 +775,20 @@ int main(int argc, char **argv) {
       }
     }
 
-    state_point_imu = kf.get_x();
-    geoQuatIMU.x = state_point_imu.rot.coeffs()[0];
-    geoQuatIMU.y = state_point_imu.rot.coeffs()[1];
-    geoQuatIMU.z = state_point_imu.rot.coeffs()[2];
-    geoQuatIMU.w = state_point_imu.rot.coeffs()[3];
-    if (last_timestamp_imu > 0.0) {
-      publish_odometry_imu(pubOdomAftMappedIMU);
+    if (last_timestamp_imu > 0.0 &&
+        last_timestamp_imu > last_timestamp_imu_back) {
+      state_point_imu = kf.get_x();
+      geoQuatIMU.x = state_point_imu.rot.coeffs()[0];
+      geoQuatIMU.y = state_point_imu.rot.coeffs()[1];
+      geoQuatIMU.z = state_point_imu.rot.coeffs()[2];
+      geoQuatIMU.w = state_point_imu.rot.coeffs()[3];
+
+      odomAftMappedIMU.header.frame_id = "camera_init";
+      odomAftMappedIMU.child_frame_id = "body";
+      odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
+      set_posestamp_imu(odomAftMappedIMU.pose);
+      pubOdomAftMappedIMU.publish(odomAftMappedIMU);
+      last_timestamp_imu_back = last_timestamp_imu;
     }
 
     status = ros::ok();
