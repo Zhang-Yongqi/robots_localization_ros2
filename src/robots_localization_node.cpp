@@ -25,7 +25,7 @@
 #define MOV_THRESHOLD (1.5f)
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic, wheel_topic;
+string lid_topic, imu_topic, wheel_topic,pcd_path;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
@@ -37,8 +37,7 @@ double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
-double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
-       last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
+double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0, last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
 double lidar_end_time = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 
@@ -113,6 +112,7 @@ void loadConfig(const ros::NodeHandle &nh) {
   nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
   nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
   nh.param<string>("common/wheel_topic", wheel_topic, "/slaver/wheel_state");
+  nh.param<string>("pcd_path", pcd_path, "/home/crt-rm/ws_planning/src/sentry_planning/global_searcher/map/scans_home1.pcd");
   nh.param<bool>("common/time_sync_en", time_sync_en, false);
   nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu,
                    0.0);
@@ -472,19 +472,20 @@ void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body) {
 }
 
 void publish_frame_world_local(const ros::Publisher &pubLaserCloudFull_world) {
-  // int size = feats_undistort->points.size();
-  // PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
-  // for (int i = 0; i < size; i++) {
-  //   pointBodyToWorld(&feats_undistort->points[i],
-  //                    &laserCloudIMUBody->points[i]);
-  // }
+  int size = feats_undistort->points.size();
+  PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
+  for (int i = 0; i < size; i++)
+  {
+    pointBodyToWorld(&feats_undistort->points[i],
+                     &laserCloudIMUBody->points[i]);
+  }
 
-  // sensor_msgs::PointCloud2 laserCloudmsg;
-  // pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
-  // laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-  // laserCloudmsg.header.frame_id = "camera_init";
-  // pubLaserCloudFull_world.publish(laserCloudmsg);
-  // publish_count -= PUBFRAME_PERIOD;
+  sensor_msgs::PointCloud2 laserCloudmsg;
+  pcl::toROSMsg(*laserCloudIMUBody, laserCloudmsg);
+  laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+  laserCloudmsg.header.frame_id = "camera_init";
+  pubLaserCloudFull_world.publish(laserCloudmsg);
+  publish_count -= PUBFRAME_PERIOD;
 }
 
 void publish_velocity(const ros::Publisher &pubVelo) {
@@ -665,7 +666,7 @@ int main(int argc, char **argv) {
   /*** Map initialization ***/
   // string map_pcd = root_dir + "map/map.pcd";
   std::string map_pcd;
-  nh.param("map_file", map_pcd, root_dir + "map/map.pcd");
+  map_pcd = pcd_path;
   std::string infoMsg = "[Robots Localization] Load Map:" + map_pcd;
   ROS_INFO(infoMsg.c_str());
   if (pcl::io::loadPCDFile<PointType>(map_pcd, *global_map) == -1) {
@@ -705,7 +706,7 @@ int main(int argc, char **argv) {
       nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
 
   signal(SIGINT, SigHandle);
-  ros::Rate rate(5000);
+  ros::Rate rate(200);
   bool status = ros::ok();
 
   while (status) {
@@ -775,19 +776,20 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (last_timestamp_imu > 0.0 &&
-        last_timestamp_imu > last_timestamp_imu_back) {
+    if (last_timestamp_imu > 0.0 && last_timestamp_imu > last_timestamp_imu_back)
+    {
       state_point_imu = kf.get_x();
       geoQuatIMU.x = state_point_imu.rot.coeffs()[0];
       geoQuatIMU.y = state_point_imu.rot.coeffs()[1];
       geoQuatIMU.z = state_point_imu.rot.coeffs()[2];
-      geoQuatIMU.w = state_point_imu.rot.coeffs()[3];
-
+      geoQuatIMU.w = state_point_imu.rot.coeffs()[3];    
+    
       odomAftMappedIMU.header.frame_id = "camera_init";
       odomAftMappedIMU.child_frame_id = "body";
       odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
       set_posestamp_imu(odomAftMappedIMU.pose);
       pubOdomAftMappedIMU.publish(odomAftMappedIMU);
+
       last_timestamp_imu_back = last_timestamp_imu;
     }
 
