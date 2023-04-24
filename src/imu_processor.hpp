@@ -51,6 +51,9 @@ class IMUProcessor {
                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
                PointCloudXYZI &pcl_out);
 
+  bool process_imu_only(const sensor_msgs::Imu::Ptr imu_data,
+                        esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
+
   Eigen::Matrix<double, 12, 12> Q;
   V3D cov_acc;
   V3D cov_gyr;
@@ -75,9 +78,9 @@ class IMUProcessor {
   float init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
                           M4F &predict_pose);
 
-  sensor_msgs::ImuConstPtr last_imu_;
+  sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
   vector<Pose6D> IMUpose;
-  V3D acc_s_last, angvel_last;
+  V3D acc_s_last, angvel_last, acc_s_last_only, angvel_last_only;
   double last_lidar_end_time_;
 
   M3D Lidar_R_wrt_IMU;
@@ -114,6 +117,7 @@ void IMUProcessor::reset() {
   init_iter_num = 1;
   IMUpose.clear();
   last_imu_.reset(new sensor_msgs::Imu());
+  last_imu_only_.reset(new sensor_msgs::Imu());
   Q = process_noise_cov();
 }
 
@@ -342,6 +346,7 @@ void IMUProcessor::imu_init(
   init_P(21, 21) = init_P(22, 22) = 0.00001;                 // 重力
   kf_state.change_P(init_P);
   last_imu_ = meas.imu.back();
+  last_imu_only_ = meas.imu.back();
 }
 
 bool IMUProcessor::init_pose(
@@ -409,6 +414,7 @@ bool IMUProcessor::init_pose(
     /// The very first lidar frame
     imu_init(meas, kf_state, init_iter_num);
     last_imu_ = meas.imu.back();
+    last_imu_only_ = meas.imu.back();
 
     state_ikfom imu_state = kf_state.get_x();
     if (init_iter_num > MAX_INI_COUNT) {
@@ -603,6 +609,46 @@ void IMUProcessor::process(
       if (it_pcl == pcl_out.points.begin()) break;
     }
   }
+}
+
+bool IMUProcessor::process_imu_only(
+    const sensor_msgs::Imu::Ptr imu_data,
+    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state) {
+  /*** Initialize IMU pose ***/
+  state_ikfom imu_state = kf_state.get_x_imu();
+
+  /*** forward propagation at each imu point ***/
+  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
+  M3D R_imu;
+  double dt = 0;
+  input_ikfom in;
+
+  angvel_avr << 0.5 * (last_imu_only_->angular_velocity.x + imu_data->angular_velocity.x),
+      0.5 * (last_imu_only_->angular_velocity.y + imu_data->angular_velocity.y),
+      0.5 * (last_imu_only_->angular_velocity.z + imu_data->angular_velocity.z);
+  acc_avr << 0.5 * (last_imu_only_->linear_acceleration.x + imu_data->linear_acceleration.x),
+      0.5 * (last_imu_only_->linear_acceleration.y + imu_data->linear_acceleration.z),
+      0.5 * (last_imu_only_->linear_acceleration.y + imu_data->linear_acceleration.z);
+
+  // 通过重力数值对加速度进行一下微调
+  acc_avr = acc_avr * G_m_s2 / mean_acc.norm();  // - state_inout.ba;
+
+  dt = imu_data->header.stamp.toSec() - last_imu_only_->header.stamp.toSec();
+  in.acc = acc_avr  -imu_state.ba;
+  in.gyro = angvel_avr -imu_state.bg;
+  kf_state.predict_imu_only(dt, in);
+
+  /* save the poses at each IMU measurements */
+  imu_state = kf_state.get_x_imu();
+  angvel_last_only = angvel_avr - imu_state.bg;
+  acc_s_last_only = imu_state.rot * (acc_avr - imu_state.ba);
+  for (int i = 0; i < 3; i++) {
+    acc_s_last_only[i] += imu_state.grav[i];
+  }
+
+  last_imu_only_ = imu_data;
+
+  return true;
 }
 
 #pragma clang diagnostic pop

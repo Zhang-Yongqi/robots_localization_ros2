@@ -25,7 +25,7 @@
 #define MOV_THRESHOLD (1.5f)
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic, wheel_topic,pcd_path;
+string lid_topic, imu_topic, wheel_topic, pcd_path;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
@@ -37,11 +37,12 @@ double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
-double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0, last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
+double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
+       last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
 double lidar_end_time = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
-
 float det_range = 300.0f;
+
 
 int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
@@ -66,10 +67,10 @@ vect3 pos_lid;
 
 mutex mtx_buffer;
 condition_variable sig_buffer;
-deque<double> time_buffer;                     // 激光雷达数据
-deque<PointCloudXYZI::Ptr> lidar_buffer;       // 雷达数据队列
-deque<sensor_msgs::Imu::ConstPtr> imu_buffer;  // IMU数据队列
-deque<geometry_msgs::Vector3> wheel_buffer;    // 轮速计数据队列
+deque<double> time_buffer;                          // 激光雷达数据
+deque<PointCloudXYZI::Ptr> lidar_buffer;            // 雷达数据队列
+deque<sensor_msgs::Imu::ConstPtr> imu_buffer;       // IMU数据队列
+deque<geometry_msgs::Vector3> wheel_buffer;         // 轮速计数据队列
 
 // PointCloudXYZI: 点云坐标 + 信号强度形式
 PointCloudXYZI::Ptr global_map(new PointCloudXYZI());
@@ -94,14 +95,15 @@ shared_ptr<IMUProcessor> p_imu(new IMUProcessor());
 nav_msgs::Path path;
 geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
-geometry_msgs::Quaternion geoQuatIMU;
 nav_msgs::Odometry odomAftMapped;
 nav_msgs::Odometry odomAftMappedIMU;
 geometry_msgs::TwistStamped velocity;
 
 std::ofstream fout_pose;
+ros::Publisher sub_pub_imu;
 
-void SigHandle(int sig) {
+void SigHandle(int sig)
+{
   flg_exit = true;
   ROS_WARN("catch sig %d", sig);
   sig_buffer.notify_all();
@@ -112,7 +114,8 @@ void loadConfig(const ros::NodeHandle &nh) {
   nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
   nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
   nh.param<string>("common/wheel_topic", wheel_topic, "/slaver/wheel_state");
-  nh.param<string>("pcd_path", pcd_path, "/home/crt-rm/ws_planning/src/sentry_planning/global_searcher/map/scans_home1.pcd");
+  nh.param<string>("pcd_path", pcd_path,
+                   "/home/zoe/catkin_ws/src/FAST_LIO/PCD/scans_mbot_0.pcd");
   nh.param<bool>("common/time_sync_en", time_sync_en, false);
   nh.param<double>("common/time_offset_lidar_to_imu", time_diff_lidar_to_imu,
                    0.0);
@@ -217,11 +220,13 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) {
 
 // 接收IMU数据回调函数
 // ConstPtr: 智能指针
-void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
+void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
+{
   publish_count++;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
   // 将IMU和激光雷达点云的时间戳对齐（livox）
-  if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en) {
+  if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
+  {
     msg->header.stamp = ros::Time().fromSec(timediff_lidar_wrt_imu +
                                             msg_in->header.stamp.toSec());
   }
@@ -232,7 +237,8 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
 
   // 上锁
   mtx_buffer.lock();
-  if (timestamp < last_timestamp_imu) {
+  if (timestamp < last_timestamp_imu)
+  {
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer.clear();
   }
@@ -261,9 +267,35 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
   imu_buffer.push_back(msg);
   mtx_buffer.unlock();
   sig_buffer.notify_all();
+
+  if (initialized && last_timestamp_imu > 0.0 &&
+      last_timestamp_imu > last_timestamp_imu_back)
+  {
+    if (p_imu->process_imu_only(msg, kf))
+    {
+      state_point_imu = kf.get_x_imu();
+      odomAftMappedIMU.header.frame_id = "camera_init";
+      odomAftMappedIMU.child_frame_id = "body";
+      odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
+      odomAftMappedIMU.pose.pose.position.x = state_point_imu.pos(0);
+      odomAftMappedIMU.pose.pose.position.y = state_point_imu.pos(1);
+      odomAftMappedIMU.pose.pose.position.z = state_point_imu.pos(2);
+      odomAftMappedIMU.pose.pose.orientation.x =
+          state_point_imu.rot.coeffs()[0];
+      odomAftMappedIMU.pose.pose.orientation.y =
+          state_point_imu.rot.coeffs()[1];
+      odomAftMappedIMU.pose.pose.orientation.z =
+          state_point_imu.rot.coeffs()[2];
+      odomAftMappedIMU.pose.pose.orientation.w =
+          state_point_imu.rot.coeffs()[3];
+      sub_pub_imu.publish(odomAftMappedIMU);
+      last_timestamp_imu_back = last_timestamp_imu;
+    }
+  }
 }
 
-void wheel_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in) {
+void wheel_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in)
+{
   // msg_in->z = (float)ros::Time::now().toSec();
   // double timestamp = msg_in->z.toSec();
 
@@ -345,17 +377,6 @@ void set_posestamp(T &out) {
   out.pose.orientation.y = geoQuat.y;
   out.pose.orientation.z = geoQuat.z;
   out.pose.orientation.w = geoQuat.w;
-}
-
-template <typename T>
-void set_posestamp_imu(T &out) {
-  out.pose.position.x = state_point_imu.pos(0);
-  out.pose.position.y = state_point_imu.pos(1);
-  out.pose.position.z = state_point_imu.pos(2);
-  out.pose.orientation.x = geoQuatIMU.x;
-  out.pose.orientation.y = geoQuatIMU.y;
-  out.pose.orientation.z = geoQuatIMU.z;
-  out.pose.orientation.w = geoQuatIMU.w;
 }
 
 // 通过pubOdomAftMapped发布位姿odomAftMapped，同时计算协方差存在kf中，同tf计算位姿
@@ -474,8 +495,7 @@ void publish_frame_body(const ros::Publisher &pubLaserCloudFull_body) {
 void publish_frame_world_local(const ros::Publisher &pubLaserCloudFull_world) {
   int size = feats_undistort->points.size();
   PointCloudXYZI::Ptr laserCloudIMUBody(new PointCloudXYZI(size, 1));
-  for (int i = 0; i < size; i++)
-  {
+  for (int i = 0; i < size; i++) {
     pointBodyToWorld(&feats_undistort->points[i],
                      &laserCloudIMUBody->points[i]);
   }
@@ -699,8 +719,7 @@ int main(int argc, char **argv) {
       nh.advertise<sensor_msgs::PointCloud2>("/laser_map", 100000);
   ros::Publisher pubOdomAftMapped =
       nh.advertise<nav_msgs::Odometry>("/odometry", 100000);
-  ros::Publisher pubOdomAftMappedIMU =
-      nh.advertise<nav_msgs::Odometry>("/odometry_imu", 100000);
+  sub_pub_imu = nh.advertise<nav_msgs::Odometry>("/odometry_imu", 100000);
   ros::Publisher pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
   ros::Publisher pubVelo =
       nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
@@ -759,6 +778,7 @@ int main(int argc, char **argv) {
       geoQuat.y = state_point.rot.coeffs()[1];
       geoQuat.z = state_point.rot.coeffs()[2];
       geoQuat.w = state_point.rot.coeffs()[3];
+      kf.change_x_imu();
 
       /******* Publish odometry *******/
       publish_odometry(pubOdomAftMapped);
@@ -774,23 +794,6 @@ int main(int argc, char **argv) {
         publish_frame_body(pubLaserCloudFull_body);
         publish_frame_world_local(pubLaserCloudFull_world);
       }
-    }
-
-    if (last_timestamp_imu > 0.0 && last_timestamp_imu > last_timestamp_imu_back)
-    {
-      state_point_imu = kf.get_x();
-      geoQuatIMU.x = state_point_imu.rot.coeffs()[0];
-      geoQuatIMU.y = state_point_imu.rot.coeffs()[1];
-      geoQuatIMU.z = state_point_imu.rot.coeffs()[2];
-      geoQuatIMU.w = state_point_imu.rot.coeffs()[3];    
-    
-      odomAftMappedIMU.header.frame_id = "camera_init";
-      odomAftMappedIMU.child_frame_id = "body";
-      odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
-      set_posestamp_imu(odomAftMappedIMU.pose);
-      pubOdomAftMappedIMU.publish(odomAftMappedIMU);
-
-      last_timestamp_imu_back = last_timestamp_imu;
     }
 
     status = ros::ok();

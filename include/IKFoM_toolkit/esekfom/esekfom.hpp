@@ -269,7 +269,7 @@ class esekf {
     // f_w函数对应use-ikfom.h中的 df_dw 函数，对应fast_lio2论文公式(7)
     Matrix<scalar_type, m, process_noise_dof> f_w_ = f_w(x_, i_in);  // 24*12
     Matrix<scalar_type, n, process_noise_dof> f_w_final;             // 23*12
-    state x_before = x_;  //保存x_的值，用于后面的更新
+    state x_before = x_;  // 保存x_的值，用于后面的更新
     // 对应fast_lio2论文公式(2),整个更新函数
     x_.oplus(f_, dt);
 
@@ -278,19 +278,19 @@ class esekf {
     for (std::vector<std::pair<std::pair<int, int>, int>>::iterator it =
              x_.vect_state.begin();
          it != x_.vect_state.end(); it++) {
-      int idx = (*it).first.first;   //状态变量的索引
-      int dim = (*it).first.second;  //状态变量的维数
-      int dof = (*it).second;        //状态变量的自由度
+      int idx = (*it).first.first;   // 状态变量的索引
+      int dim = (*it).first.second;  // 状态变量的维数
+      int dof = (*it).second;        // 状态变量的自由度
       for (int i = 0; i < n; i++) {
         for (int j = 0; j < dof; j++) {
           f_x_final(idx + j, i) = f_x_(dim + j, i);
-          //更新f_x_final，形成n*n阵，用于更新
+          // 更新f_x_final，形成n*n阵，用于更新
         }
       }
       for (int i = 0; i < process_noise_dof; i++) {
         for (int j = 0; j < dof; j++) {
           f_w_final(idx + j, i) = f_w_(dim + j, i);
-          //更新f_w_final，形成n*dof，用于更新
+          // 更新f_w_final，形成n*dof，用于更新
         }
       }
     }
@@ -382,6 +382,12 @@ class esekf {
     P_ = (F_x1)*P_ * (F_x1).transpose() +
          (dt * f_w_final) * Q * (dt * f_w_final).transpose();
 #endif
+  }
+
+  // iterated error state EKF propogation
+  void predict_imu_only(double &dt, const input &i_in) {
+    flatted_state f_ = f(x_imu_, i_in);
+    x_imu_.oplus(f_, dt);
   }
 
   // iterated error state EKF update for measurement as a manifold.
@@ -1835,10 +1841,11 @@ class esekf {
       // 状态维度 n > 测量维度 dof_Measurement
       // 如果状态量维度大于观测方程 n > m，不满秩
       if (n > dof_Measurement) {
-        //#ifdef USE_sparse
-        // Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> K_temp = h_x * P_
-        // * h_x.transpose(); spMt R_temp = h_v * R_ * h_v.transpose(); K_temp
-        // += R_temp;
+        // #ifdef USE_sparse
+        //  Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> K_temp = h_x *
+        //  P_
+        //  * h_x.transpose(); spMt R_temp = h_v * R_ * h_v.transpose(); K_temp
+        //  += R_temp;
         Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic> h_x_cur =
             Eigen::Matrix<scalar_type, Eigen::Dynamic, Eigen::Dynamic>::Zero(
                 dof_Measurement, n);
@@ -1868,10 +1875,10 @@ class esekf {
             R;
         K_h = K_ * dyn_share.h;
         K_x = K_ * h_x_cur;
-        //#else
+        // #else
         //	K_= P_ * h_x.transpose() * (h_x * P_ * h_x.transpose() + h_v * R
         //* h_v.transpose()).inverse(); #endif
-      } else {  //避免求逆矩阵，K按稀疏矩阵分解的方法如论文式20
+      } else {  // 避免求逆矩阵，K按稀疏矩阵分解的方法如论文式20
 #ifdef USE_sparse
         // Eigen::Matrix<scalar_type, n, n> b = Eigen::Matrix<scalar_type, n,
         // n>::Identity(); Eigen::SparseQR<Eigen::SparseMatrix<scalar_type>,
@@ -1954,9 +1961,9 @@ class esekf {
       Matrix<scalar_type, n, 1> dx_ =
           K_h + (K_x - Matrix<scalar_type, n, n>::Identity()) * dx_new;
       state x_before = x_;  // 加上校正后的误差状态dx_
-      x_.boxplus(dx_);  //根据计算得到的误差增量后验，更新状态量
+      x_.boxplus(dx_);  // 根据计算得到的误差增量后验，更新状态量
 
-      //判断已收敛的条件是误差的估计值小于阈值
+      // 判断已收敛的条件是误差的估计值小于阈值
       dyn_share.converge = true;
       for (int i = 0; i < n; i++) {
         if (std::fabs(dx_[i]) > limit[i]) {
@@ -2096,13 +2103,19 @@ class esekf {
     }
   }
 
+  void change_x_imu()
+  {
+    x_imu_ = x_;
+  }
+
   void change_P(cov &input_cov) { P_ = input_cov; }
 
   const state &get_x() const { return x_; }
+  const state &get_x_imu() const { return x_imu_; }
   const cov &get_P() const { return P_; }
 
  private:
-  state x_;
+  state x_, x_imu_;
   measurement m_;
   cov P_;
   spMt l_;
