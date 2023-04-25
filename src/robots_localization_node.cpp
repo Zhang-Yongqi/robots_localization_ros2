@@ -40,7 +40,7 @@ double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
 double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
        last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
-double lidar_end_time = 0.0, first_lidar_time = 0.0;
+double lidar_end_time = 0.0, lidar_end_time_last = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 float det_range = 300.0f;
 
@@ -67,10 +67,11 @@ vect3 pos_lid;
 
 mutex mtx_buffer;
 condition_variable sig_buffer;
-deque<double> time_buffer;                    // 激光雷达数据
-deque<PointCloudXYZI::Ptr> lidar_buffer;      // 雷达数据队列
-deque<sensor_msgs::Imu::ConstPtr> imu_buffer; // IMU数据队列
-deque<geometry_msgs::Vector3> wheel_buffer;   // 轮速计数据队列
+deque<double> time_buffer;               // 激光雷达数据
+deque<PointCloudXYZI::Ptr> lidar_buffer; // 雷达数据队列
+deque<sensor_msgs::Imu::ConstPtr>
+    imu_buffer;                             // IMU数据队列
+deque<geometry_msgs::Vector3> wheel_buffer; // 轮速计数据队列
 
 // PointCloudXYZI: 点云坐标 + 信号强度形式
 PointCloudXYZI::Ptr global_map(new PointCloudXYZI());
@@ -238,10 +239,10 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 // ConstPtr: 智能指针
 void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 {
-  end_time = start_time;
-  start_time = ros::Time::now();
-  duration_time = start_time - end_time;
-  ROS_INFO("imu spin time is %f", duration_time.toSec() * 1000);
+  // end_time = start_time;
+  // start_time = ros::Time::now();
+  // duration_time = start_time - end_time;
+  // ROS_INFO("imu spin time is %f", duration_time.toSec() * 1000);
 
   publish_count++;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
@@ -310,18 +311,18 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
       odomAftMappedIMU.pose.pose.orientation.w =
           state_point_imu.rot.coeffs()[3];
       sub_pub_imu.publish(odomAftMappedIMU);
-      end3 = start3;
-      start3 = ros::Time::now();
-      duration3 = start3 - end3;
-      ROS_INFO("imu publish spin time is %f", duration3.toSec() * 1000);
+      // end3 = start3;
+      // start3 = ros::Time::now();
+      // duration3 = start3 - end3;
+      // ROS_INFO("imu publish spin time is %f", duration3.toSec() * 1000);
 
       last_timestamp_imu_back = last_timestamp_imu;
     }
   }
 
-  end2 = ros::Time::now();
-  duration2 = end2 - start_time;
-  ROS_INFO("imu process time is %f", duration2.toSec() * 1000);
+  // end2 = ros::Time::now();
+  // duration2 = end2 - start_time;
+  // ROS_INFO("imu process time is %f", duration2.toSec() * 1000);
 }
 
 void wheel_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in)
@@ -394,18 +395,38 @@ bool sync_packages(MeasureGroup &meas)
   /*** push imu data, and pop from imu buffer ***/
   double imu_time = imu_buffer.front()->header.stamp.toSec();
   meas.imu.clear();
+  std::cout << "1lidar_buffer_size:   " << lidar_buffer.size() << std::endl;
+  std::cout << "1imutime_big?:  " << (imu_time < lidar_end_time) << std::endl;
+  std::cout << "1imu_time:   " << imu_time << std::endl;
+  std::cout << "1lidar_end_time" << lidar_end_time << std::endl;
+  std::cout << "1time_now" << ros::Time::now().toSec() << std::endl;
+  std::cout << "" << std::endl;
+
   while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
   {
+    std::cout << "spin:hhhhhh" << std::endl;
     imu_time = imu_buffer.front()->header.stamp.toSec();
     if (imu_time > lidar_end_time)
       break;
     meas.imu.push_back(imu_buffer.front());
     imu_buffer.pop_front();
   }
+  while (meas.imu.size() > 30)
+  {
+    meas.imu.pop_front();
+  }
+  std::cout << "meas.imu.size:    " << meas.imu.size() << std::endl;
 
   lidar_buffer.pop_front();
   time_buffer.pop_front();
   lidar_pushed = false;
+  std::cout << "now: " << lidar_end_time << ", last: " << lidar_end_time_last << std::endl;
+  // if (lidar_end_time < lidar_end_time_last || lidar_end_time > lidar_end_time_last + 1.0)
+  // {
+  //   lidar_end_time_last = lidar_end_time;
+  //   return false;
+  // }
+  lidar_end_time_last = lidar_end_time;
   return true;
 }
 
@@ -718,7 +739,7 @@ void h_share_model(state_ikfom &s,
 }
 
 /**
- * 雷达处理回调函数，原本放在主函数中以200Hz循环，这里用定时器以30Hz回调，如果收到雷达数据可以对齐就处理
+ * 雷达处理回调函数
  */
 void process_lidar()
 {
@@ -796,9 +817,6 @@ void process_lidar()
       publish_frame_body(pubLaserCloudFull_body);
       publish_frame_world_local(pubLaserCloudFull_world);
     }
-    ros::Time end = ros::Time::now();
-    ros::Duration duration = end - start;
-    ROS_INFO("Time is %f", duration.toSec());
   }
   // loop_rate.sleep();
   // }
@@ -888,8 +906,8 @@ int main(int argc, char **argv)
 
   ros::Subscriber sub_pcl =
       p_lidar->lidar_type == AVIA
-          ? nh.subscribe(lid_topic, 200000, livox_pcl_cbk)
-          : nh.subscribe(lid_topic, 200000, standard_pcl_cbk);
+          ? nh.subscribe(lid_topic, 2, livox_pcl_cbk)
+          : nh.subscribe(lid_topic, 2, standard_pcl_cbk);
   ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
 
   // ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
