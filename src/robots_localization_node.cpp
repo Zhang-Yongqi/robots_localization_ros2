@@ -281,6 +281,9 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
       odomAftMappedIMU.pose.pose.position.x = state_point_imu.pos(0);
       odomAftMappedIMU.pose.pose.position.y = state_point_imu.pos(1);
       odomAftMappedIMU.pose.pose.position.z = state_point_imu.pos(2);
+      odomAftMappedIMU.twist.twist.linear.x = state_point_imu.vel(0);
+      odomAftMappedIMU.twist.twist.linear.y = state_point_imu.vel(1);
+      odomAftMappedIMU.twist.twist.linear.z = state_point_imu.vel(2);
       odomAftMappedIMU.pose.pose.orientation.x =
           state_point_imu.rot.coeffs()[0];
       odomAftMappedIMU.pose.pose.orientation.y =
@@ -400,6 +403,9 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
   odomAftMapped.child_frame_id = "body";
   odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);
   set_posestamp(odomAftMapped.pose);  // 设置位置，欧拉角
+  odomAftMapped.twist.twist.linear.x = state_point.vel(0);
+  odomAftMapped.twist.twist.linear.y = state_point.vel(1);
+  odomAftMapped.twist.twist.linear.z = state_point.vel(2);
   pubOdomAftMapped.publish(odomAftMapped);
   auto P = kf.get_P();
   for (int i = 0; i < 6; i++) {
