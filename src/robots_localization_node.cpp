@@ -26,7 +26,7 @@
 #define MOV_THRESHOLD (1.5f)
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic, wheel_topic, pcd_path;
+string lid_topic, imu_topic, reloc_topic, pcd_path;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
@@ -39,7 +39,7 @@ double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
 double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
-       last_timestamp_imu_back = -1.0, last_timestamp_wheel = -1.0;
+       last_timestamp_imu_back = -1.0;
 double lidar_end_time = 0.0, lidar_end_time_last = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 float det_range = 300.0f;
@@ -47,6 +47,10 @@ float det_range = 300.0f;
 int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int feats_down_size = 0;
+
+bool need_reloc = false;
+float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
+V3F reloc_initT = V3F(0.0, 0.0, 0.0);
 
 vector<float> priorT(3, 0.0);
 vector<float> YAW_RANGE(3, 0.0);
@@ -70,7 +74,6 @@ condition_variable sig_buffer;
 deque<double> time_buffer;                     // 激光雷达数据
 deque<PointCloudXYZI::Ptr> lidar_buffer;       // 雷达数据队列
 deque<sensor_msgs::Imu::ConstPtr> imu_buffer;  // IMU数据队列
-deque<geometry_msgs::Vector3> wheel_buffer;    // 轮速计数据队列
 
 // PointCloudXYZI: 点云坐标 + 信号强度形式
 PointCloudXYZI::Ptr global_map(new PointCloudXYZI());
@@ -112,7 +115,7 @@ void SigHandle(int sig) {
 void loadConfig(const ros::NodeHandle &nh) {
   nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
   nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
-  nh.param<string>("common/wheel_topic", wheel_topic, "/slaver/wheel_state");
+  nh.param<string>("common/reloc_topic", reloc_topic, "/reloc_location");
   nh.param<string>("pcd_path", pcd_path,
                    "/home/zoe/catkin_ws/src/FAST_LIO/PCD/scans_mbot_0.pcd");
   nh.param<bool>("common/time_sync_en", time_sync_en, false);
@@ -307,19 +310,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
   // ROS_INFO("imu process time is %f", duration2.toSec() * 1000);
 }
 
-void wheel_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in) {
-  // msg_in->z = (float)ros::Time::now().toSec();
-  // double timestamp = msg_in->z.toSec();
-
-  // // 上锁
-  // mtx_buffer.lock();
-  // if (timestamp < last_timestamp_wheel) {
-  //   ROS_WARN("wheel loop back, clear buffer");
-  //   wheel_buffer.clear();
-  // }
-  // last_timestamp_wheel = timestamp;
-  // wheel_buffer.push_back(msg_in);
-  // mtx_buffer.unlock();
+void reloc_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in) {
+  mtx_buffer.lock();
+  reloc_initT << msg_in->x, msg_in->y, msg_in->z;
+  mtx_buffer.unlock();
 }
 
 double lidar_mean_scantime = 0.0;  // 雷达扫描一帧平均时间
@@ -403,6 +397,19 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
   odomAftMapped.child_frame_id = "body";
   odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);
   set_posestamp(odomAftMapped.pose);  // 设置位置，欧拉角
+
+  ////////////////触发重定位////////////////
+  if (odomAftMapped.pose.pose.position.x > 30.0 ||
+      odomAftMapped.pose.pose.position.x < -2.0 ||
+      odomAftMapped.pose.pose.position.y > 17.0 ||
+      odomAftMapped.pose.pose.position.y < -2.0 ||
+      odomAftMapped.pose.pose.position.z > 5.0 ||
+      odomAftMapped.pose.pose.position.z < -2.0 ||
+      point_valid_proportion < 0.5) {
+    need_reloc = true;
+    odomAftMapped.pose.pose.position.z = -100.0;
+  }
+
   odomAftMapped.twist.twist.linear.x = state_point.vel(0);
   odomAftMapped.twist.twist.linear.y = state_point.vel(1);
   odomAftMapped.twist.twist.linear.z = state_point.vel(2);
@@ -545,6 +552,8 @@ void h_share_model(state_ikfom &s,
   corr_normvect->clear();
   total_residual = 0.0;  // 残差和
 
+  point_valid_num = 0.0;
+  point_num = 0.0;
   // 最近邻面搜索，以及残差计算
 #ifdef MP_EN
   omp_set_num_threads(MP_PROC_NUM);
@@ -553,6 +562,7 @@ void h_share_model(state_ikfom &s,
   /** closest surface search and residual computation **/
   // 遍历所有特征点
   for (int i = 0; i < feats_down_size; i++) {
+    point_num += 1.0;
     // feats_down_body: 网格滤波器之后的激光点
     PointType &point_body = feats_down_body->points[i];
     // feats_down_world: 世界坐标系下的激光点
@@ -606,9 +616,11 @@ void h_share_model(state_ikfom &s,
         normvec->points[i].z = pabcd(2);
         normvec->points[i].intensity = pd2;
         res_last[i] = fabs(pd2);
+        point_valid_num += 1.0;
       }
     }
   }
+  point_valid_proportion = point_valid_num / point_num;
 
   // 根据point_selected_surf状态判断哪些点是可用的
   effct_feat_num = 0;
@@ -689,6 +701,14 @@ void process_lidar() {
     // 初始化位姿
     if (!initialized) {
       initialized =
+          p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+      return;
+    }
+
+    // 重定位
+    if (need_reloc) {
+      p_imu->set_init_pose(reloc_initT);
+      need_reloc =
           p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
       return;
     }
@@ -827,6 +847,7 @@ int main(int argc, char **argv) {
                                 ? nh.subscribe(lid_topic, 2, livox_pcl_cbk)
                                 : nh.subscribe(lid_topic, 2, standard_pcl_cbk);
   ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
+  ros::Subscriber sub_reloc = nh.subscribe(reloc_topic, 200000, reloc_cbk);
 
   // ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
   // ros::Timer timer = nh.createTimer(ros::Duration(0.02), process_lidar);

@@ -1,7 +1,7 @@
 common:
     lid_topic: "/livox/lidar"
     imu_topic: "/livox/imu"
-    wheel_topic: "/slaver/wheel_state"
+    reloc_topic: "/reloc_location"
     time_sync_en: false # ONLY turn on when external time synchronization is really not possible
 
 preprocess:
