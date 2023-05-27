@@ -708,8 +708,9 @@ void process_lidar() {
     // 重定位
     if (need_reloc) {
       p_imu->set_init_pose(reloc_initT);
-      need_reloc =
-          p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+      if(p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)){
+        need_reloc = false;
+      }
       return;
     }
 

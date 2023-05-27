@@ -11,7 +11,7 @@
     <param name="cube_side_length" type="double" value="1000" />
     <param name="runtime_pos_log_enable" type="bool" value="1" />
     <!-- <param name="pcd_path" type="string" value="../FAST_LIO/PCD/scans.pcd" /> -->
-    <param name="pcd_path" type="string" value="$(find fast_lio)/PCD/scans.pcd" />
+    <param name="pcd_path" type="string" value="$(find fast_lio)/PCD/changfang.pcd" />
 
 
     <node pkg="robots_localization" type="robots_localization" name="robots_localization"

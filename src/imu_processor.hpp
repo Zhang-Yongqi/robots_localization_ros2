@@ -358,7 +358,7 @@ bool IMUProcessor::init_pose(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
     PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
-    vector<float> &YAW_RANGE, V3D &initT) {
+    vector<float> &YAW_RANGE) {
   if (meas.imu.empty()) {
     std::cout << "aaaa" << std::endl;
     return false;
