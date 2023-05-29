@@ -48,7 +48,7 @@ int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int feats_down_size = 0;
 
-bool need_reloc = false;
+bool need_reloc = false, point_not_enough = false;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT = V3F(0.0, 0.0, 0.0);
 
@@ -405,7 +405,7 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
       odomAftMapped.pose.pose.position.y < -2.0 ||
       odomAftMapped.pose.pose.position.z > 5.0 ||
       odomAftMapped.pose.pose.position.z < -2.0 ||
-      point_valid_proportion < 0.5) {
+      point_valid_proportion < 0.5 || point_not_enough) {
     need_reloc = true;
     odomAftMapped.pose.pose.position.z = -100.0;
   }
@@ -621,6 +621,11 @@ void h_share_model(state_ikfom &s,
     }
   }
   point_valid_proportion = point_valid_num / point_num;
+  if (point_num < 1000) {
+    point_not_enough = true;
+  } else {
+    point_not_enough = false;
+  }
 
   // 根据point_selected_surf状态判断哪些点是可用的
   effct_feat_num = 0;
@@ -708,7 +713,7 @@ void process_lidar() {
     // 重定位
     if (need_reloc) {
       p_imu->set_init_pose(reloc_initT);
-      if(p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)){
+      if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
         need_reloc = false;
       }
       return;

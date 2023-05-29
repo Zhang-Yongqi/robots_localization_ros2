@@ -95,6 +95,10 @@ class IMUProcessor {
 
   int init_iter_num;
   std::ofstream fout_init;
+
+  float p_valid_proportion;
+  float p_num;
+  float p_valid;
 };
 
 IMUProcessor::IMUProcessor() : b_first_frame_(true) {
@@ -107,6 +111,9 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true) {
   init_pose_curr = M4F::Zero();
   init_pose_last = M4F::Zero();
   fout_init.open((string)ROOT_DIR + "/log/initialization.txt", std::ios::out);
+  p_valid_proportion = 0.0f;
+  p_num = 0.0f;
+  p_valid = 0.0f;
 }
 
 IMUProcessor::~IMUProcessor() {}
@@ -121,6 +128,9 @@ void IMUProcessor::reset() {
   last_imu_.reset(new sensor_msgs::Imu());
   last_imu_only_.reset(new sensor_msgs::Imu());
   Q = process_noise_cov();
+  p_valid_proportion = 0.0f;
+  p_num = 0.0f;
+  p_valid = 0.0f;
 }
 
 void IMUProcessor::set_init_pose(const V3F &poseT) {
@@ -222,6 +232,31 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
     predict_pose.block<3, 3>(0, 0) = rotation_matrix;
     predict_pose.block<3, 1>(0, 3) = translation;
   }
+
+  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
+  p_num = (float)trans_cloud->size();
+  p_valid = 0.0;
+  for (size_t i = 0; i < trans_cloud->size(); i++) {
+    auto ori_point = scan->points[i];
+    if (!pcl::isFinite(ori_point)) continue;
+    auto trans_point = trans_cloud->points[i];
+    std::vector<float> dist;
+    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+    kdtree.Nearest_Search(trans_point, 1, points_near, dist);
+    Eigen::Vector3f closest_point =
+        Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
+    float p_dist =
+        (trans_point.x - closest_point[0]) *
+            (trans_point.x - closest_point[0]) +
+        (trans_point.y - closest_point[1]) *
+            (trans_point.y - closest_point[1]) +
+        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
+    if (p_dist < 1.0) {
+      p_valid += 1.0;
+    }
+  }
+  p_valid_proportion = p_valid / p_num;
+
   fout_init << "whole dist: " << whole_dist << std::endl;
   std::cout << "whole dist: " << whole_dist << std::endl;
   return whole_dist;
@@ -293,6 +328,31 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
     predict_pose.block<3, 3>(0, 0) = rotation_matrix;
     predict_pose.block<3, 1>(0, 3) = translation;
   }
+
+  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
+  p_num = (float)trans_cloud->size();
+  p_valid = 0.0;
+  for (size_t i = 0; i < trans_cloud->size(); i++) {
+    auto ori_point = scan->points[i];
+    if (!pcl::isFinite(ori_point)) continue;
+    auto trans_point = trans_cloud->points[i];
+    std::vector<float> dist;
+    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+    kdtree.Nearest_Search(trans_point, 1, points_near, dist);
+    Eigen::Vector3f closest_point =
+        Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
+    float p_dist =
+        (trans_point.x - closest_point[0]) *
+            (trans_point.x - closest_point[0]) +
+        (trans_point.y - closest_point[1]) *
+            (trans_point.y - closest_point[1]) +
+        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
+    if (p_dist < 1.0) {
+      p_valid += 1.0;
+    }
+  }
+  p_valid_proportion = p_valid / p_num;
+
   fout_init << "whole dist: " << whole_dist << std::endl;
   std::cout << "whole dist: " << whole_dist << std::endl;
   return whole_dist;
@@ -430,7 +490,11 @@ bool IMUProcessor::init_pose(
       init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
   fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
             << "delta_rvec: " << delta_rvec.norm() << std::endl;
-  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1) {
+  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 &&
+      init_pose_curr(0, 3) < 30.0 && init_pose_curr(0, 3) > -2.0 &&
+      init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
+      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 &&
+      p_valid_proportion > 0.5) {
     /// The very first lidar frame
     imu_init(meas, kf_state, init_iter_num);
     last_imu_ = meas.imu.back();
@@ -464,6 +528,9 @@ bool IMUProcessor::init_pose(
     }
   }
   init_pose_last = init_pose_curr;
+  p_valid_proportion = 0.0f;
+  p_num = 0.0f;
+  p_valid = 0.0f;
   std::cout << "wo zai zui hou" << std::endl;
   return false;
 }
