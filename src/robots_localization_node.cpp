@@ -48,7 +48,7 @@ int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int feats_down_size = 0;
 
-bool need_reloc = false, point_not_enough = false;
+bool need_reloc = false, point_not_enough = false, initT_flag = true;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT = V3F(0.0, 0.0, 0.0);
 
@@ -310,9 +310,11 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
   // ROS_INFO("imu process time is %f", duration2.toSec() * 1000);
 }
 
-void reloc_cbk(const geometry_msgs::Vector3::ConstPtr &msg_in) {
+void reloc_cbk(const RobotCommand::ConstPtr &msg_in) {
   mtx_buffer.lock();
-  reloc_initT << msg_in->x, msg_in->y, msg_in->z;
+  if(msg_in->commd_keyboard == 82){
+    reloc_initT << msg_in->target_position_x, msg_in->target_position_y, msg_in->target_position_z;
+  }
   mtx_buffer.unlock();
 }
 
@@ -407,6 +409,7 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
       odomAftMapped.pose.pose.position.z < -2.0 ||
       point_valid_proportion < 0.5 || point_not_enough) {
     need_reloc = true;
+    initT_flag = false;
     odomAftMapped.pose.pose.position.z = -100.0;
   }
 
@@ -711,12 +714,26 @@ void process_lidar() {
     }
 
     // 重定位
-    if (need_reloc) {
-      p_imu->set_init_pose(reloc_initT);
-      if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
-        need_reloc = false;
+    if(need_reloc){
+      std::cout<<"!!!!!!!!!need relocalization!!!!!!!!!"<<std::endl;
+      if (reloc_initT.norm()>0.01) {
+        std::cout<<"reloc_initT: "<< reloc_initT <<std::endl;
+        if(!initT_flag){
+          p_imu->reset();
+          p_imu->set_init_pose(reloc_initT);
+          p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+          p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+          p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+          p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+          p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+          initT_flag = true;
+        }        
+        if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
+          need_reloc = false;
+          reloc_initT = V3F(0.0, 0.0, 0.0);
+        }
+        return;
       }
-      return;
     }
 
     // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理

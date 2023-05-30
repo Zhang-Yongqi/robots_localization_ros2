@@ -131,6 +131,13 @@ void IMUProcessor::reset() {
   p_valid_proportion = 0.0f;
   p_num = 0.0f;
   p_valid = 0.0f;
+  b_first_frame_ = true;
+
+  cov_acc = V3D(0.1, 0.1, 0.1);
+  cov_gyr = V3D(0.1, 0.1, 0.1);
+  cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
+  cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
+
 }
 
 void IMUProcessor::set_init_pose(const V3F &poseT) {
@@ -400,6 +407,7 @@ void IMUProcessor::imu_init(
   init_state.offset_R_L_I = Lidar_R_wrt_IMU;
   init_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
   init_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
+  init_state.vel = vect3(V3D(0.0,0.0,0.0));
   kf_state.change_x(init_state);
 
   esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
@@ -523,10 +531,21 @@ bool IMUProcessor::init_pose(
           cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
           cov_gyr[2]);
       fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", "
-                << imu_state.pos[1] << ", " << imu_state.pos[2] << std::endl;
+                << imu_state.pos[1] << ", " << imu_state.pos[2] << std::endl
+                << "Gravity: "<<imu_state.grav[0]<<", "<<imu_state.grav[1]<<", "
+                <<imu_state.grav[2]<<std::endl<<"mean_acc: "<<mean_acc[0]<<", "
+                <<mean_acc[1]<<", "<<mean_acc[2]<<std::endl<<"mean_gyr: "<<
+                mean_gyr[0]<<", "<<mean_gyr[1]<<", "<<mean_gyr[2]<<std::endl
+                << "bias_acc covariance: "<<cov_bias_acc[0]<<", "<<cov_bias_acc[1]
+                <<", "<<cov_bias_acc[2]<<std::endl<<"bias_gyr covariance: "<<
+                cov_bias_gyr[0]<<", "<<cov_bias_gyr[1]<<", "<<cov_bias_gyr[2]
+                <<std::endl<<"acc covarience: "<<cov_acc[0]<<", "<<cov_acc[1]
+                <<", "<<cov_acc[2]<<std::endl<<"gyr covarience: "<<cov_gyr[0]
+                <<", "<<cov_gyr[1]<<", "<<cov_gyr[2]<<std::endl;
       return true;
     }
   }
+  std::cout<<"init pose last change"<<std::endl;
   init_pose_last = init_pose_curr;
   p_valid_proportion = 0.0f;
   p_num = 0.0f;

@@ -6,6 +6,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <robots_localization/Pose6D.h>
+#include <sentry_msgs/RobotCommand.h>
 #include <sensor_msgs/Imu.h>
 #include <so3_math.h>
 #include <tf/transform_broadcaster.h>
@@ -37,6 +38,7 @@ using namespace Eigen;
 #define DEBUG_FILE_DIR(name) (string(string(ROOT_DIR) + "Log/" + name))
 
 typedef robots_localization::Pose6D Pose6D;
+typedef sentry_msgs::RobotCommand RobotCommand;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
