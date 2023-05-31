@@ -26,7 +26,7 @@
 #define MOV_THRESHOLD (1.5f)
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic, reloc_topic, pcd_path;
+string lid_topic, imu_topic, reloc_topic,mode_topic, pcd_path;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
@@ -50,11 +50,14 @@ int feats_down_size = 0;
 
 bool need_reloc = false, point_not_enough = false, initT_flag = true;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
-V3F reloc_initT = V3F(0.0, 0.0, 0.0);
+V3F reloc_initT(Zero3f);
 
-vector<float> priorT(3, 0.0);
+vector<float> red_priorT(3, 0.0);
+vector<float> blue_priorT(3, 0.0);
 vector<float> YAW_RANGE(3, 0.0);
-V3F prior_T(Zero3f);
+V3F red_prior_T(Zero3f);
+V3F blue_prior_T(Zero3f);
+bool mode_status = 0, mode_changed = false, pose_inited = false;  // 0为红方，1 为蓝方
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
 V3D Lidar_T_wrt_IMU(Zero3d);
@@ -115,7 +118,8 @@ void SigHandle(int sig) {
 void loadConfig(const ros::NodeHandle &nh) {
   nh.param<string>("common/lid_topic", lid_topic, "/livox/lidar");
   nh.param<string>("common/imu_topic", imu_topic, "/livox/imu");
-  nh.param<string>("common/reloc_topic", reloc_topic, "/reloc_location");
+  nh.param<string>("common/reloc_topic", reloc_topic, "/slaver/robot_command");
+  nh.param<string>("common/mode_topic", mode_topic, "/slaver/robot_status");
   nh.param<string>("pcd_path", pcd_path,
                    "/home/zoe/catkin_ws/src/FAST_LIO/PCD/scans_mbot_0.pcd");
   nh.param<bool>("common/time_sync_en", time_sync_en, false);
@@ -161,7 +165,10 @@ void loadConfig(const ros::NodeHandle &nh) {
   } else {
     std::cerr << "Not valid init method!" << std::endl;
   }
-  nh.param<vector<float>>("prior/prior_T", priorT, vector<float>(3, 0.0));
+  nh.param<vector<float>>("prior/red_prior_T", red_priorT,
+                          vector<float>(3, 0.0));
+  nh.param<vector<float>>("prior/blue_prior_T", blue_priorT,
+                          vector<float>(3, 0.0));
 }
 
 double timediff_lidar_wrt_imu = 0.0;  // lidar imu 时间差
@@ -312,10 +319,26 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
 
 void reloc_cbk(const RobotCommand::ConstPtr &msg_in) {
   mtx_buffer.lock();
-  if(msg_in->commd_keyboard == 82){
-    reloc_initT << msg_in->target_position_x, msg_in->target_position_y, msg_in->target_position_z;
+  if (msg_in->commd_keyboard == 82) {
+    reloc_initT << msg_in->target_position_x, msg_in->target_position_y,
+        msg_in->target_position_z;
   }
   mtx_buffer.unlock();
+}
+
+void mode_cbk(const RobotStatus::ConstPtr &msg_in) {
+  if(!mode_changed && !pose_inited){
+    mtx_buffer.lock();
+    //std::cout<<"id: "<<(int)msg_in->id<<std::endl;
+    if ((int)msg_in->id > 100) {
+      mode_status = 1;  // 蓝方
+    } else {
+      mode_status = 0;  // 红方      
+    }
+    mode_changed = true;
+    std::cout<<"mode changed with "<<mode_status<<std::endl;
+    mtx_buffer.unlock();
+  }
 }
 
 double lidar_mean_scantime = 0.0;  // 雷达扫描一帧平均时间
@@ -697,6 +720,22 @@ void process_lidar() {
   // ros::Rate loop_rate(30);
   // while (ros::ok())
   // {
+  if(mode_changed){
+    if (mode_status) {
+      p_imu->set_init_pose(blue_prior_T);
+      std::cout<<"init with blue"<<std::endl<<std::endl;
+    } else {
+      p_imu->set_init_pose(red_prior_T);
+      std::cout<<"init with red"<<std::endl<<std::endl;
+    }
+    mode_changed = false;
+    pose_inited = true;
+  }
+
+  if(!pose_inited){
+    return;
+  }
+
   if (sync_packages(Measures)) {
     ros::Time start = ros::Time::now();
     if (flg_first_scan) {
@@ -714,11 +753,11 @@ void process_lidar() {
     }
 
     // 重定位
-    if(need_reloc){
-      std::cout<<"!!!!!!!!!need relocalization!!!!!!!!!"<<std::endl;
-      if (reloc_initT.norm()>0.01) {
-        std::cout<<"reloc_initT: "<< reloc_initT <<std::endl;
-        if(!initT_flag){
+    if (need_reloc) {
+      std::cout << "!!!!!!!!!need relocalization!!!!!!!!!" << std::endl;
+      if (reloc_initT.norm() > 0.01) {
+        std::cout << "reloc_initT: " << reloc_initT << std::endl;
+        if (!initT_flag) {
           p_imu->reset();
           p_imu->set_init_pose(reloc_initT);
           p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
@@ -727,7 +766,7 @@ void process_lidar() {
           p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
           p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
           initT_flag = true;
-        }        
+        }
         if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
           need_reloc = false;
           reloc_initT = V3F(0.0, 0.0, 0.0);
@@ -803,26 +842,6 @@ int main(int argc, char **argv) {
   downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min,
                                  filter_size_surf_min);
 
-  prior_T << VEC_FROM_ARRAY(priorT);
-  Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
-  Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
-  p_imu->set_init_pose(prior_T);
-  p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-  p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-  p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-  p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-  p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-  YAW_RANGE[1] = 0.35;
-  YAW_RANGE[2] = 6.3;
-
-  double epsi[23] = {0.001};
-  fill(epsi, epsi + 23, 0.001);
-  kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS,
-                    epsi);
-  // 将函数地址传入kf对象中，用于接收特定于系统的模型
-  // 及其差异作为一个维数变化的特征矩阵进行测量。
-  // 通过一个函数（h_dyn_share_in）同时计算测量（z）、估计测量（h）、偏微分矩阵（h_x，h_v）和噪声协方差（R）
-
   /*** Map initialization ***/
   // string map_pcd = root_dir + "map/map.pcd";
   std::string map_pcd;
@@ -840,6 +859,28 @@ int main(int argc, char **argv) {
     ikdtree.Build(global_map->points);
   }
   std::cout << "KDtree built! " << std::endl;
+
+  red_prior_T << VEC_FROM_ARRAY(red_priorT);
+  blue_prior_T << VEC_FROM_ARRAY(blue_priorT);
+  std::cout << "red init T: " << red_prior_T << std::endl;
+  std::cout << "blue init T: " << blue_prior_T << std::endl;
+  Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
+  Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
+  p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+  p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+  p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+  p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+  p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+  YAW_RANGE[1] = 0.35;
+  YAW_RANGE[2] = 6.3;
+
+  double epsi[23] = {0.001};
+  fill(epsi, epsi + 23, 0.001);
+  kf.init_dyn_share(get_f, df_dx, df_dw, h_share_model, NUM_MAX_ITERATIONS,
+                    epsi);
+  // 将函数地址传入kf对象中，用于接收特定于系统的模型
+  // 及其差异作为一个维数变化的特征矩阵进行测量。
+  // 通过一个函数（h_dyn_share_in）同时计算测量（z）、估计测量（h）、偏微分矩阵（h_x，h_v）和噪声协方差（R）
 
   /*** ROS initialization ***/
 
@@ -871,6 +912,7 @@ int main(int argc, char **argv) {
                                 : nh.subscribe(lid_topic, 2, standard_pcl_cbk);
   ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
   ros::Subscriber sub_reloc = nh.subscribe(reloc_topic, 200000, reloc_cbk);
+  ros::Subscriber sub_mode = nh.subscribe(mode_topic, 200000, mode_cbk);
 
   // ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
   // ros::Timer timer = nh.createTimer(ros::Duration(0.02), process_lidar);

@@ -2,6 +2,7 @@ common:
     lid_topic: "/ouster/points"
     imu_topic: "/ouster/imu"
     reloc_topic: "/slaver/robot_command"
+    mode_topic: "/slaver/robot_status"
     time_sync_en: false # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu:
         0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
@@ -45,8 +46,8 @@ runtime_pos_log_enable: 1
 #     plane_dist: 0.1
 #     max_iter: 10
 prior:
-    #prior_T: [0.3, 1.1, 1.21]
-    prior_T: [3.0,8.0,0.05]
+    red_prior_T: [23.0,7.5,0.05]
+    blue_prior_T: [5.0,7.5,0.05]
     prior_R: [1 ,0, 0,
               0 ,1, 0,
               0 ,0, 1]

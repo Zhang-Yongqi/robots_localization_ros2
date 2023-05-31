@@ -6,8 +6,9 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <robots_localization/Pose6D.h>
-#include <sentry_msgs/RobotCommand.h>
 #include <sensor_msgs/Imu.h>
+#include <sentry_msgs/RobotCommand.h>
+#include <sentry_msgs/RobotStatus.h>
 #include <so3_math.h>
 #include <tf/transform_broadcaster.h>
 
@@ -39,6 +40,7 @@ using namespace Eigen;
 
 typedef robots_localization::Pose6D Pose6D;
 typedef sentry_msgs::RobotCommand RobotCommand;
+typedef sentry_msgs::RobotStatus RobotStatus;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
