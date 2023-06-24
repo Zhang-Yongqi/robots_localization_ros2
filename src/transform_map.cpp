@@ -54,7 +54,7 @@ int main(int argc, char **argv)
     CLOUD_PTR sourceCloudPtr = pcl::make_shared<CLOUD>();
     if (pcl::io::loadPCDFile(source_path, *sourceCloudPtr) == -1)
     {
-        PCL_ERROR("Invalid source cloud: ", source_path);
+        PCL_ERROR("Invalid source cloud:  %s", source_path.c_str());
         return -1;
     }
     // std::cout << "size: " << sourceCloudPtr->points.size() << std::endl;

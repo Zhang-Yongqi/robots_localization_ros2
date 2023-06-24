@@ -1,107 +1,19 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "openmp-use-default-none"
-#pragma once
 
-#include <common_lib.h>
-#include <pcl/common/transforms.h>
-#include <sensor_msgs/Imu.h>
+#include "imu_processor.h"
 
-#include <sophus/so3.hpp>
+using namespace common_lib;
+using namespace ikd_Tree;
 
-#include "use-ikfom.h"
-
-#define MAX_INI_COUNT (10)
-
-const bool time_list(PointType &x, PointType &y) {
+const bool
+time_list(PointType &x, PointType &y)
+{
   return (x.curvature < y.curvature);
 };
 
-class IMUProcessor {
- public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  IMUProcessor();
-
-  ~IMUProcessor();
-
-  void reset();
-
-  void set_init_pose(const V3F &poseT);
-
-  void set_extrinsic(const V3D &transl, const M3D &rot);
-
-  void set_extrinsic(const V3D &transl);
-
-  void set_extrinsic(const MD(4, 4) & T);
-
-  void set_gyr_cov(const V3D &scaler);
-
-  void set_acc_cov(const V3D &scaler);
-
-  void set_gyr_bias_cov(const V3D &b_g);
-
-  void set_acc_bias_cov(const V3D &b_a);
-
-  bool init_pose(const MeasureGroup &meas,
-                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                 PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
-                 vector<float> &YAW_RANGE);
-
-  void process(const MeasureGroup &meas,
-               esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-               PointCloudXYZI &pcl_out);
-
-  bool process_imu_only(const sensor_msgs::Imu::Ptr imu_data,
-                        esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
-
-  Eigen::Matrix<double, 12, 12> Q;
-  V3D cov_acc;
-  V3D cov_gyr;
-  V3D cov_acc_scale;
-  V3D cov_gyr_scale;
-  V3D cov_bias_gyr;
-  V3D cov_bias_acc;
-
-  double first_lidar_time;
-
-  string method;
-  float res, step_size, trans_eps, eculi_eps, plane_dist;
-  int max_iter;
-
- private:
-  void imu_init(const MeasureGroup &meas,
-                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
-
-  float init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose);
-  float init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                        M4F &predict_pose);
-  float init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                          M4F &predict_pose);
-
-  sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
-  vector<Pose6D> IMUpose;
-  V3D acc_s_last, angvel_last, acc_s_last_only, angvel_last_only;
-  double last_lidar_end_time_;
-
-  M3D Lidar_R_wrt_IMU;
-  V3D Lidar_T_wrt_IMU;
-
-  M4F init_pose_curr;
-  M4F init_pose_last;
-  bool b_first_frame_;
-  V3D mean_acc;
-  V3D mean_gyr;
-  mutex mtx_error;
-
-  int init_iter_num;
-  std::ofstream fout_init;
-
-  float p_valid_proportion;
-  float p_num;
-  float p_valid;
-};
-
-IMUProcessor::IMUProcessor() : b_first_frame_(true) {
+IMUProcessor::IMUProcessor() : b_first_frame_(true)
+{
   cov_acc = V3D(0.1, 0.1, 0.1);
   cov_gyr = V3D(0.1, 0.1, 0.1);
   cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
@@ -118,7 +30,8 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true) {
 
 IMUProcessor::~IMUProcessor() {}
 
-void IMUProcessor::reset() {
+void IMUProcessor::reset()
+{
   mean_acc = V3D(0, 0, -1.0);
   mean_gyr = V3D(0, 0, 0);
   acc_s_last = Zero3d;
@@ -137,25 +50,28 @@ void IMUProcessor::reset() {
   cov_gyr = V3D(0.1, 0.1, 0.1);
   cov_bias_gyr = V3D(0.0001, 0.0001, 0.0001);
   cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
-
 }
 
-void IMUProcessor::set_init_pose(const V3F &poseT) {
+void IMUProcessor::set_init_pose(const V3F &poseT)
+{
   init_pose_last.block<3, 3>(0, 0) = Eye3f;
   init_pose_last.block<3, 1>(0, 3) = poseT;
 }
 
-void IMUProcessor::set_extrinsic(const MD(4, 4) & T) {
+void IMUProcessor::set_extrinsic(const MD(4, 4) & T)
+{
   Lidar_T_wrt_IMU = T.block<3, 1>(0, 3);
   Lidar_R_wrt_IMU = T.block<3, 3>(0, 0);
 }
 
-void IMUProcessor::set_extrinsic(const V3D &transl) {
+void IMUProcessor::set_extrinsic(const V3D &transl)
+{
   Lidar_T_wrt_IMU = transl;
   Lidar_R_wrt_IMU.setIdentity();
 }
 
-void IMUProcessor::set_extrinsic(const V3D &transl, const M3D &rot) {
+void IMUProcessor::set_extrinsic(const V3D &transl, const M3D &rot)
+{
   Lidar_T_wrt_IMU = transl;
   Lidar_R_wrt_IMU = rot;
 }
@@ -169,13 +85,15 @@ void IMUProcessor::set_gyr_bias_cov(const V3D &b_g) { cov_bias_gyr = b_g; }
 void IMUProcessor::set_acc_bias_cov(const V3D &b_a) { cov_bias_acc = b_a; }
 
 float IMUProcessor::init_ndt_method(PointCloudXYZI::Ptr scan,
-                                    M4F &predict_pose) {
+                                    M4F &predict_pose)
+{
   return 0.0;
 }
 
 float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
                                     PointCloudXYZI::Ptr scan,
-                                    M4F &predict_pose) {
+                                    M4F &predict_pose)
+{
   PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
   int knn_num = 1;
   M3F rotation_matrix;
@@ -184,7 +102,8 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
   translation = predict_pose.block<3, 1>(0, 3);
   float whole_dist = 0.0;
 
-  for (int iter = 0; iter < max_iter; iter++) {
+  for (int iter = 0; iter < max_iter; iter++)
+  {
     pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
     Eigen::Matrix<float, 6, 6> H;
     Eigen::Matrix<float, 6, 1> b;
@@ -197,10 +116,12 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
     omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-    for (size_t i = 0; i < point_num; i++) {
+    for (size_t i = 0; i < point_num; i++)
+    {
       auto ori_point = scan->points[i];
       // pcl::isFinite()用来检查点云中是否有NaN值
-      if (!pcl::isFinite(ori_point)) continue;
+      if (!pcl::isFinite(ori_point))
+        continue;
       auto trans_point = trans_cloud->points[i];
       std::vector<float> dist;
       // Eigen::aligned_allocator<PointType> 是一个内存分配器，它用于为存储在
@@ -243,9 +164,11 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
   pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
   p_num = (float)trans_cloud->size();
   p_valid = 0.0;
-  for (size_t i = 0; i < trans_cloud->size(); i++) {
+  for (size_t i = 0; i < trans_cloud->size(); i++)
+  {
     auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point)) continue;
+    if (!pcl::isFinite(ori_point))
+      continue;
     auto trans_point = trans_cloud->points[i];
     std::vector<float> dist;
     std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
@@ -258,7 +181,8 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
         (trans_point.y - closest_point[1]) *
             (trans_point.y - closest_point[1]) +
         (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-    if (p_dist < 1.0) {
+    if (p_dist < 1.0)
+    {
       p_valid += 1.0;
     }
   }
@@ -271,7 +195,8 @@ float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
 
 float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
                                       PointCloudXYZI::Ptr scan,
-                                      M4F &predict_pose) {
+                                      M4F &predict_pose)
+{
   PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
   M3F rotation_matrix;
   V3F translation;
@@ -279,7 +204,8 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
   translation = predict_pose.block<3, 1>(0, 3);
   float whole_dist = 0.0;
 
-  for (int iter = 0; iter < max_iter; iter++) {
+  for (int iter = 0; iter < max_iter; iter++)
+  {
     pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
     Eigen::Matrix<float, 6, 6> H;
     Eigen::Matrix<float, 6, 1> b;
@@ -292,9 +218,11 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
     omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-    for (size_t i = 0; i < point_num; i++) {
+    for (size_t i = 0; i < point_num; i++)
+    {
       auto ori_point = scan->points[i];
-      if (!pcl::isFinite(ori_point)) continue;
+      if (!pcl::isFinite(ori_point))
+        continue;
       auto trans_point = trans_cloud->points[i];
       std::vector<float> dist;
       std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
@@ -305,11 +233,14 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
       esti_plane(abcd, points_near, plane_dist);
       float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
                          abcd[2] * trans_point.z + abcd[3];
-      if (error_dist < 0.0) {
+      if (error_dist < 0.0)
+      {
         mtx_error.lock();
         whole_dist += -error_dist;
         mtx_error.unlock();
-      } else {
+      }
+      else
+      {
         mtx_error.lock();
         whole_dist += error_dist;
         mtx_error.unlock();
@@ -339,9 +270,11 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
   pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
   p_num = (float)trans_cloud->size();
   p_valid = 0.0;
-  for (size_t i = 0; i < trans_cloud->size(); i++) {
+  for (size_t i = 0; i < trans_cloud->size(); i++)
+  {
     auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point)) continue;
+    if (!pcl::isFinite(ori_point))
+      continue;
     auto trans_point = trans_cloud->points[i];
     std::vector<float> dist;
     std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
@@ -354,7 +287,8 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
         (trans_point.y - closest_point[1]) *
             (trans_point.y - closest_point[1]) +
         (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-    if (p_dist < 1.0) {
+    if (p_dist < 1.0)
+    {
       p_valid += 1.0;
     }
   }
@@ -369,9 +303,11 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
  ** 2. normalize the acceleration measurenments to unit gravity **/
 void IMUProcessor::imu_init(
     const MeasureGroup &meas,
-    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N) {
+    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N)
+{
   V3D cur_acc, cur_gyr;
-  if (b_first_frame_) {
+  if (b_first_frame_)
+  {
     reset();
     b_first_frame_ = false;
     const auto &imu_acc = meas.imu.front()->linear_acceleration;
@@ -381,7 +317,8 @@ void IMUProcessor::imu_init(
     first_lidar_time = meas.lidar_beg_time;
   }
 
-  for (const auto &imu : meas.imu) {
+  for (const auto &imu : meas.imu)
+  {
     const auto &imu_acc = imu->linear_acceleration;
     const auto &gyr_acc = imu->angular_velocity;
     cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
@@ -402,19 +339,19 @@ void IMUProcessor::imu_init(
   init_state.grav = S2(-mean_acc / mean_acc.norm() * G_m_s2);
   // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
 
-  init_state.bg = mean_gyr;  // 角速度测量均值作为陀螺仪偏差
+  init_state.bg = mean_gyr; // 角速度测量均值作为陀螺仪偏差
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;
   init_state.offset_R_L_I = Lidar_R_wrt_IMU;
   init_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
   init_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
-  init_state.vel = vect3(V3D(0.0,0.0,0.0));
+  init_state.vel = vect3(V3D(0.0, 0.0, 0.0));
   kf_state.change_x(init_state);
 
   esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
   init_P.setIdentity();
-  init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;       // 外参R
-  init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;   // 外参t
-  init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;  // 陀螺仪偏差
+  init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;      // 外参R
+  init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;  // 外参t
+  init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001; // 陀螺仪偏差
   init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;  // 加速度计偏差
   init_P(21, 21) = init_P(22, 22) = 0.00001;                 // 重力
   kf_state.change_P(init_P);
@@ -426,8 +363,10 @@ bool IMUProcessor::init_pose(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
     PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
-    vector<float> &YAW_RANGE) {
-  if (meas.imu.empty()) {
+    vector<float> &YAW_RANGE)
+{
+  if (meas.imu.empty())
+  {
     std::cout << "aaaa" << std::endl;
     return false;
   };
@@ -437,7 +376,8 @@ bool IMUProcessor::init_pose(
   float error_min = 1000000.0, error = 0.0;
   M4F prior_with_min_error = M4F::Zero();
   for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]);
-       i++) {
+       i++)
+  {
     float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
     // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
 
@@ -449,21 +389,30 @@ bool IMUProcessor::init_pose(
     prior_with_yaw.block<3, 3>(0, 0) =
         rotation_yaw * init_pose_last.block<3, 3>(0, 0);
 
-    if (method == "NDT") {
+    if (method == "NDT")
+    {
       error = init_ndt_method(meas.lidar, prior_with_yaw);
-    } else if (method == "ICP") {
+    }
+    else if (method == "ICP")
+    {
       error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
-    } else if (method == "PPICP") {
+    }
+    else if (method == "PPICP")
+    {
       error = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-    } else {
+    }
+    else
+    {
       std::cerr << "Not valid method!" << std::endl;
       return false;
     }
-    if (error < error_min) {
+    if (error < error_min)
+    {
       error_min = error;
       prior_with_min_error = prior_with_yaw;
     }
-    if (error_min < 100) {
+    if (error_min < 100)
+    {
       break;
     }
   }
@@ -502,14 +451,16 @@ bool IMUProcessor::init_pose(
       init_pose_curr(0, 3) < 30.0 && init_pose_curr(0, 3) > -2.0 &&
       init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
       init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 &&
-      p_valid_proportion > 0.5) {
+      p_valid_proportion > 0.5)
+  {
     /// The very first lidar frame
     imu_init(meas, kf_state, init_iter_num);
     last_imu_ = meas.imu.back();
     last_imu_only_ = meas.imu.back();
 
     state_ikfom imu_state = kf_state.get_x();
-    if (init_iter_num > MAX_INI_COUNT) {
+    if (init_iter_num > MAX_INI_COUNT)
+    {
       cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
 
       cov_acc = cov_acc_scale;
@@ -532,20 +483,23 @@ bool IMUProcessor::init_pose(
           cov_gyr[2]);
       fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", "
                 << imu_state.pos[1] << ", " << imu_state.pos[2] << std::endl
-                << "Gravity: "<<imu_state.grav[0]<<", "<<imu_state.grav[1]<<", "
-                <<imu_state.grav[2]<<std::endl<<"mean_acc: "<<mean_acc[0]<<", "
-                <<mean_acc[1]<<", "<<mean_acc[2]<<std::endl<<"mean_gyr: "<<
-                mean_gyr[0]<<", "<<mean_gyr[1]<<", "<<mean_gyr[2]<<std::endl
-                << "bias_acc covariance: "<<cov_bias_acc[0]<<", "<<cov_bias_acc[1]
-                <<", "<<cov_bias_acc[2]<<std::endl<<"bias_gyr covariance: "<<
-                cov_bias_gyr[0]<<", "<<cov_bias_gyr[1]<<", "<<cov_bias_gyr[2]
-                <<std::endl<<"acc covarience: "<<cov_acc[0]<<", "<<cov_acc[1]
-                <<", "<<cov_acc[2]<<std::endl<<"gyr covarience: "<<cov_gyr[0]
-                <<", "<<cov_gyr[1]<<", "<<cov_gyr[2]<<std::endl;
+                << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", "
+                << imu_state.grav[2] << std::endl
+                << "mean_acc: " << mean_acc[0] << ", "
+                << mean_acc[1] << ", " << mean_acc[2] << std::endl
+                << "mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2] << std::endl
+                << "bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1]
+                << ", " << cov_bias_acc[2] << std::endl
+                << "bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1] << ", " << cov_bias_gyr[2]
+                << std::endl
+                << "acc covarience: " << cov_acc[0] << ", " << cov_acc[1]
+                << ", " << cov_acc[2] << std::endl
+                << "gyr covarience: " << cov_gyr[0]
+                << ", " << cov_gyr[1] << ", " << cov_gyr[2] << std::endl;
       return true;
     }
   }
-  std::cout<<"init pose last change"<<std::endl;
+  std::cout << "init pose last change" << std::endl;
   init_pose_last = init_pose_curr;
   p_valid_proportion = 0.0f;
   p_num = 0.0f;
@@ -558,8 +512,10 @@ bool IMUProcessor::init_pose(
 void IMUProcessor::process(
     const MeasureGroup &meas,
     esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-    PointCloudXYZI &pcl_out) {
-  if (meas.imu.empty()) {
+    PointCloudXYZI &pcl_out)
+{
+  if (meas.imu.empty())
+  {
     return;
   };
   ROS_ASSERT(meas.lidar != nullptr);
@@ -597,10 +553,12 @@ void IMUProcessor::process(
   input_ikfom in;
   // 遍历本次估计的所有IMU测量并且进行积分，离散中值法 前向传播
   fout_init << std::endl;
-  for (auto it_imu = v_imu.begin(); it_imu < (v_imu.end() - 1); it_imu++) {
+  for (auto it_imu = v_imu.begin(); it_imu < (v_imu.end() - 1); it_imu++)
+  {
     auto &&head = *(it_imu);
     auto &&tail = *(it_imu + 1);
-    if (tail->header.stamp.toSec() < last_lidar_end_time_) continue;
+    if (tail->header.stamp.toSec() < last_lidar_end_time_)
+      continue;
 
     angvel_avr << 0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
         0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
@@ -611,12 +569,15 @@ void IMUProcessor::process(
         0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
 
     // 通过重力数值对加速度进行一下微调
-    acc_avr = acc_avr * G_m_s2 / mean_acc.norm();  // - state_inout.ba;
+    acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
     // 如果IMU开始时刻早于上次雷达最晚时刻
-    if (head->header.stamp.toSec() < last_lidar_end_time_) {
+    if (head->header.stamp.toSec() < last_lidar_end_time_)
+    {
       dt = tail->header.stamp.toSec() - last_lidar_end_time_;
-    } else {
+    }
+    else
+    {
       dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
     }
     fout_init << "dt: " << dt << std::endl;
@@ -627,7 +588,8 @@ void IMUProcessor::process(
     Q.block<3, 3>(3, 3).diagonal() = cov_acc;
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
-    if (dt < 0.1) {
+    if (dt < 0.1)
+    {
       kf_state.predict(dt, Q, in);
     }
 
@@ -635,7 +597,8 @@ void IMUProcessor::process(
     imu_state = kf_state.get_x();
     angvel_last = angvel_avr - imu_state.bg;
     acc_s_last = imu_state.rot * (acc_avr - imu_state.ba);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; i++)
+    {
       acc_s_last[i] += imu_state.grav[i];
     }
     double &&offs_t = tail->header.stamp.toSec() - pcl_beg_time;
@@ -655,9 +618,11 @@ void IMUProcessor::process(
   last_lidar_end_time_ = pcl_end_time;
 
   /*** undistort each lidar point (backward propagation) ***/
-  if (pcl_out.points.begin() == pcl_out.points.end()) return;
+  if (pcl_out.points.begin() == pcl_out.points.end())
+    return;
   auto it_pcl = pcl_out.points.end() - 1;
-  for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--) {
+  for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--)
+  {
     auto head = it_kp - 1;
     auto tail = it_kp;
     R_imu << MAT_FROM_ARRAY(head->rot);
@@ -666,7 +631,8 @@ void IMUProcessor::process(
     acc_imu << VEC_FROM_ARRAY(tail->acc);
     angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
-    for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--) {
+    for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--)
+    {
       dt = it_pcl->curvature / double(1000) - head->offset_time;
 
       /* Transform to the 'end' frame, using only the rotation
@@ -709,25 +675,27 @@ void IMUProcessor::process(
       // W^P = W^P
       ///////////////////////////////////////////////////////////////////////
       V3D P_compensate =
-          imu_state.offset_R_L_I.conjugate() *  //.conjugate()取旋转矩阵的转置
+          imu_state.offset_R_L_I.conjugate() * //.conjugate()取旋转矩阵的转置
           (imu_state.rot.conjugate() *
                (R_i * (imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I) +
                 T_ei) -
-           imu_state.offset_T_L_I);  // not accurate!
+           imu_state.offset_T_L_I); // not accurate!
 
       // save Undistorted points and their rotation
       it_pcl->x = P_compensate(0);
       it_pcl->y = P_compensate(1);
       it_pcl->z = P_compensate(2);
 
-      if (it_pcl == pcl_out.points.begin()) break;
+      if (it_pcl == pcl_out.points.begin())
+        break;
     }
   }
 }
 
 bool IMUProcessor::process_imu_only(
     const sensor_msgs::Imu::Ptr imu_data,
-    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state) {
+    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state)
+{
   /*** Initialize IMU pose ***/
   state_ikfom imu_state = kf_state.get_x_imu();
 
@@ -749,12 +717,13 @@ bool IMUProcessor::process_imu_only(
              imu_data->linear_acceleration.z);
 
   // 通过重力数值对加速度进行一下微调
-  acc_avr = acc_avr * G_m_s2 / mean_acc.norm();  // - state_inout.ba;
+  acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
 
   dt = imu_data->header.stamp.toSec() - last_imu_only_->header.stamp.toSec();
   in.acc = acc_avr - imu_state.ba;
   in.gyro = angvel_avr - imu_state.bg;
-  if (dt < 0.1) {
+  if (dt < 0.1)
+  {
     kf_state.predict_imu_only(dt, in);
   }
 
@@ -762,7 +731,8 @@ bool IMUProcessor::process_imu_only(
   imu_state = kf_state.get_x_imu();
   angvel_last_only = angvel_avr - imu_state.bg;
   acc_s_last_only = imu_state.rot * (acc_avr - imu_state.ba);
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++)
+  {
     acc_s_last_only[i] += imu_state.grav[i];
   }
 
@@ -770,5 +740,4 @@ bool IMUProcessor::process_imu_only(
 
   return true;
 }
-
 #pragma clang diagnostic pop
