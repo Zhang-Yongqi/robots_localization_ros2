@@ -11,20 +11,20 @@ common:
 preprocess:
     lidar_type: 3 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
     scan_line: 64
-    blind: 1.0 # 最小距离阈值，即过滤掉0～blind范围内的点云
+    blind: 0.6 # 最小距离阈值，即过滤掉0～blind范围内的点云
     timestamp_unit: 3 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-    point_filter_num: 4
+    point_filter_num: 8
 
 mapping:
-    acc_cov: 0.1
-    gyr_cov: 0.1
-    b_acc_cov: 0.0001
-    b_gyr_cov: 0.0001
+    acc_cov: 1e-4
+    gyr_cov: 1e-4
+    b_acc_cov: 1e-6
+    b_gyr_cov: 1e-6
     fov_degree: 180
     det_range: 150.0
     extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
-    #extrinsic_T: [0.0, 0.0, 0.0]
-    extrinsic_T: [0.0062530000000000001, -0.011775, 0.0076449999999999996]
+    extrinsic_T: [-0.006253, 0.011775, -0.007645]
+    # extrinsic_T: [0, 0, 0]
     extrinsic_R: [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
 publish:
@@ -34,8 +34,8 @@ publish:
     scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
 max_iteration: 3
-filter_size_surf: 0.5
-filter_size_map: 0.5
+filter_size_surf: 0.05
+filter_size_map: 0.15
 cube_side_length: 1000
 runtime_pos_log_enable: 1
 # init_method: PPICP
@@ -46,8 +46,8 @@ runtime_pos_log_enable: 1
 #     plane_dist: 0.1
 #     max_iter: 10
 prior:
-    red_prior_T: [23.0,7.5,0.05]
-    blue_prior_T: [5.0,7.5,0.05]
+    red_prior_T: [3.0,7.5,0.45]
+    blue_prior_T: [3.0,7.5,0.45]
     prior_R: [1 ,0, 0,
               0 ,1, 0,
               0 ,0, 1]

@@ -22,6 +22,7 @@ RoboMaster2023 哨兵定位代码，基于FAST LIO 2进行开发
     make
     sudo make install
     ```
+    注意必须在CMakeLists中添加``add_compile_options(-fPIC)`` ！！
 - Livox MID360环境配置\
 MID360依赖`livox_ros_driver2`这个Package，注意不要安装错了. 但是这个包依赖`livox_ros_driver`这个Package(Horizon对应驱动)，因此其实也是需要安装的。最好的解决措施是在包的msg里面自定义上述两个驱动中的msg消息并生成，然后将代码中所有涉及到`livox_ros_driver::CustomMsg`的地方全部改成自定义的msg，例如`robots_localization::CustomMsg`.只要定义的消息类型一直，ros就能完成订阅的解析，不需要依赖额外的package(2023-03-20已修复)\
 先下载`Livox-SDK2`:

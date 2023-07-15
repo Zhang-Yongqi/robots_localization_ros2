@@ -105,7 +105,7 @@ geometry_msgs::PoseStamped msg_body_pose;
 geometry_msgs::Quaternion geoQuat;
 nav_msgs::Odometry odomAftMapped;
 nav_msgs::Odometry odomAftMappedIMU;
-geometry_msgs::TwistStamped velocity;
+geometry_msgs::TwistStamped odomIMUBias;  // 用来传IMU的偏置
 
 std::ofstream fout_pose;
 ros::Publisher sub_pub_imu;
@@ -275,20 +275,21 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer.clear();
   }
-  msg->linear_acceleration.x = std::max(msg->linear_acceleration.x, -10.0);
-  msg->linear_acceleration.x = std::min(msg->linear_acceleration.x, 10.0);
-  msg->linear_acceleration.y = std::max(msg->linear_acceleration.y, -10.0);
-  msg->linear_acceleration.y = std::min(msg->linear_acceleration.y, 10.0);
-  msg->linear_acceleration.z =
-      std::max(msg->linear_acceleration.z - 9.81, -5.0) + 9.81;
-  msg->linear_acceleration.z =
-      std::min(msg->linear_acceleration.z - 9.81, 5.0) + 9.81;
-  msg->angular_velocity.x = std::max(msg->angular_velocity.x, -1.0);
-  msg->angular_velocity.x = std::min(msg->angular_velocity.x, 1.0);
-  msg->angular_velocity.y = std::max(msg->angular_velocity.y, -1.0);
-  msg->angular_velocity.y = std::min(msg->angular_velocity.y, 1.0);
-  msg->angular_velocity.z = std::max(msg->angular_velocity.z, -2.0);
-  msg->angular_velocity.z = std::min(msg->angular_velocity.z, 2.0);
+  // 限制幅度，fastlio2源代码没有
+  // msg->linear_acceleration.x = std::max(msg->linear_acceleration.x, -10.0);
+  // msg->linear_acceleration.x = std::min(msg->linear_acceleration.x, 10.0);
+  // msg->linear_acceleration.y = std::max(msg->linear_acceleration.y, -10.0);
+  // msg->linear_acceleration.y = std::min(msg->linear_acceleration.y, 10.0);
+  // msg->linear_acceleration.z =
+  //     std::max(msg->linear_acceleration.z - 9.81, -5.0) + 9.81;
+  // msg->linear_acceleration.z =
+  //     std::min(msg->linear_acceleration.z - 9.81, 5.0) + 9.81;
+  // msg->angular_velocity.x = std::max(msg->angular_velocity.x, -1.0);
+  // msg->angular_velocity.x = std::min(msg->angular_velocity.x, 1.0);
+  // msg->angular_velocity.y = std::max(msg->angular_velocity.y, -1.0);
+  // msg->angular_velocity.y = std::min(msg->angular_velocity.y, 1.0);
+  // msg->angular_velocity.z = std::max(msg->angular_velocity.z, -2.0);
+  // msg->angular_velocity.z = std::min(msg->angular_velocity.z, 2.0);
   // std::cout << "imu data: " << msg->linear_acceleration.x << ", "
   //           << msg->linear_acceleration.y << ", " <<
   //           msg->linear_acceleration.z
@@ -324,6 +325,15 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
           state_point_imu.rot.coeffs()[2];
       odomAftMappedIMU.pose.pose.orientation.w =
           state_point_imu.rot.coeffs()[3];
+
+      odomIMUBias.twist.linear.x = state_point_imu.ba(0);
+      odomIMUBias.twist.linear.y = state_point_imu.ba(1);
+      odomIMUBias.twist.linear.z = state_point_imu.ba(2);
+      // 利用twist的空位发布bg
+      odomIMUBias.twist.angular.x = state_point_imu.bg(0);
+      odomIMUBias.twist.angular.y = state_point_imu.bg(1);
+      odomIMUBias.twist.angular.z = state_point_imu.bg(2);
+      pubIMUBias.publish(odomIMUBias);
       sub_pub_imu.publish(odomAftMappedIMU);
       // end3 = start3;
       // start3 = ros::Time::now();
@@ -386,18 +396,18 @@ bool sync_packages(MeasureGroup &meas)
   /*** push a lidar scan ***/
   if (!lidar_pushed)
   {
-    meas.lidar = lidar_buffer.front();
-    meas.lidar_beg_time = time_buffer.front();
-
+    meas.lidar = lidar_buffer.front();          // lidar指针指向最旧的lidar数据
+    meas.lidar_beg_time = time_buffer.front();  // 记录最早时间
+    // 更新结束时刻的时间
     if (meas.lidar->points.size() <= 1)
     { // time too little
       lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
       ROS_WARN("Too few input point cloud!\n");
-      // 这里判断了个曲率，很奇怪，不过看起来是扫描时间太短，跳过
     }
     else if (meas.lidar->points.back().curvature / double(1000) <
              0.5 * lidar_mean_scantime)
     {
+      // use curvature as time of each laser points, curvature unit: ms
       lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
     }
     else
@@ -405,6 +415,7 @@ bool sync_packages(MeasureGroup &meas)
       scan_num++;
       lidar_end_time = meas.lidar_beg_time +
                        meas.lidar->points.back().curvature / double(1000);
+      // 动态更新每帧lidar数据平均扫描时间
       lidar_mean_scantime +=
           (meas.lidar->points.back().curvature / double(1000) -
            lidar_mean_scantime) /
@@ -422,18 +433,18 @@ bool sync_packages(MeasureGroup &meas)
   }
 
   /*** push imu data, and pop from imu buffer ***/
-  double imu_time = imu_buffer.front()->header.stamp.toSec();
+  double imu_time = imu_buffer.front()->header.stamp.toSec();  // 最旧IMU时间
   meas.imu.clear();
 
-  while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))
+  while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))  // 记录imu数据，imu时间小于当前帧lidar结束时间
   {
     imu_time = imu_buffer.front()->header.stamp.toSec();
     if (imu_time > lidar_end_time)
       break;
-    meas.imu.push_back(imu_buffer.front());
+    meas.imu.push_back(imu_buffer.front());  // 记录当前lidar帧内的imu数据到meas.imu
     imu_buffer.pop_front();
   }
-  while (meas.imu.size() > 30)
+  while (meas.imu.size() > 30)  // 限制积分时间
   {
     meas.imu.pop_front();
   }
@@ -477,7 +488,7 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   {
     need_reloc = true;
     initT_flag = false;
-    odomAftMapped.pose.pose.position.z = -100.0;
+    // odomAftMapped.pose.pose.position.z = -100.0;
   }
 
   odomAftMapped.twist.twist.linear.x = state_point.vel(0);
@@ -617,16 +628,6 @@ void publish_frame_world_local(const ros::Publisher &pubLaserCloudFull_world)
   publish_count -= PUBFRAME_PERIOD;
 }
 
-void publish_velocity(const ros::Publisher &pubVelo)
-{
-  velocity.header.frame_id = "camera_init";
-  velocity.header.stamp = ros::Time().fromSec(lidar_end_time);
-  velocity.twist.linear.x = state_point.vel(0);
-  velocity.twist.linear.y = state_point.vel(1);
-  velocity.twist.linear.z = state_point.vel(2);
-  pubVelo.publish(velocity);
-}
-
 // 观测模型
 void h_share_model(state_ikfom &s,
                    esekfom::dyn_share_datastruct<double> &ekfom_data)
@@ -643,7 +644,7 @@ void h_share_model(state_ikfom &s,
 #pragma omp parallel for
 #endif
   /** closest surface search and residual computation **/
-  // 遍历所有特征点
+  // 遍历所有特征点，判断每个点的对应邻域是否符合平面点的假设
   for (int i = 0; i < feats_down_size; i++)
   {
     point_num += 1.0;
@@ -668,12 +669,12 @@ void h_share_model(state_ikfom &s,
     if (ekfom_data.converge)
     {
       /** Find the closest surfaces in the map **/
-      // 在地图中找到与之最邻近的平面
+      // 在地图中找到与之最邻近的平面，world系下从ikdtree找NUM_MATCH_POINTS个最近点用于平面拟合
       ikdtree.Nearest_Search(point_world, NUM_MATCH_POINTS, points_near,
                              pointSearchSqDis);
       // 如果最近邻的点数小于NUM_MATCH_POINTS或者最近邻的点到特征点的距离大于5m，
       // 则认为该点不是有效点
-      // 判断是否是有效匹配点，与LOAM系列类似，要求特征点最近邻的地图点数量大于阈值A，距离小鱼阈值B
+      // 判断是否是有效匹配点，与LOAM系列类似，要求特征点最近邻的地图点数量大于阈值A，距离小于阈值B
       point_selected_surf[i] = points_near.size() < NUM_MATCH_POINTS ? false
                                : pointSearchSqDis[NUM_MATCH_POINTS - 1] > 5
                                    ? false
@@ -682,9 +683,8 @@ void h_share_model(state_ikfom &s,
     if (!point_selected_surf[i])
       continue; // 如果该点不是有效点
 
-    VF(4)
-    pabcd; // 法向量
-    point_selected_surf[i] = false;
+    VF(4) pabcd;                     // 法向量
+    point_selected_surf[i] = false;  // 二次筛选平面点
     // 拟合平面方程ax+by+cz+d=0并求解点到平面距离
     if (esti_plane(pabcd, points_near, 0.1f))
     { // 计算平面法向量
@@ -702,8 +702,8 @@ void h_share_model(state_ikfom &s,
         normvec->points[i].x = pabcd(0);
         normvec->points[i].y = pabcd(1);
         normvec->points[i].z = pabcd(2);
-        normvec->points[i].intensity = pd2;
-        res_last[i] = fabs(pd2);
+        normvec->points[i].intensity = pd2;  // 以intensity记录点到面残差
+        res_last[i] = fabs(pd2);             // 残差，距离
         point_valid_num += 1.0;
       }
     }
@@ -736,13 +736,13 @@ void h_share_model(state_ikfom &s,
     ROS_WARN("No Effective Points! \n");
     return;
   }
-  res_mean_last = total_residual / effct_feat_num;
+  res_mean_last = total_residual / effct_feat_num;  // 残差均值 （距离）
 
   /* Computation of Measuremnt Jacobian matrix H and measurents vector */
   // 测量雅可比矩阵H和测量向量的计算 H=J*P*J'
   // h_x是观测h相对于状态x的jacobian，尺寸为特征点数x12
   ekfom_data.h_x = MatrixXd::Zero(effct_feat_num, 12); // (23)
-  ekfom_data.h.resize(effct_feat_num);
+  ekfom_data.h.resize(effct_feat_num);                 // 有效方程个数
 
   // 求观测值与误差的雅克比矩阵，如论文式14以及式12、13
   for (int i = 0; i < effct_feat_num; i++)
@@ -759,7 +759,7 @@ void h_share_model(state_ikfom &s,
 
     /*** get the normal vector of closest surface/corner ***/
     const PointType &norm_p = corr_normvect->points[i];
-    V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+    V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);  // 对应局部法相量, world系下
 
     /*** calculate the Measuremnt Jacobian matrix H ***/
     // conjugate()用于计算四元数的共轭，表示旋转的逆
@@ -813,16 +813,17 @@ void process_lidar()
 
   if (!pose_inited)
   {
+    std::cout << "slaver received nothing, init failed" << std::endl;
     return;
   }
 
-  if (sync_packages(Measures))
+  if (sync_packages(Measures))  // 在Measure内，储存当前lidar数据及lidar扫描时间内对应的imu数据序列
   {
     ros::Time start = ros::Time::now();
-    if (flg_first_scan)
+    if (flg_first_scan)  // 第一帧lidar数据
     {
       first_lidar_time = Measures.lidar_beg_time;
-      p_imu->first_lidar_time = first_lidar_time;
+      p_imu->first_lidar_time = first_lidar_time;  // 记录第一帧绝对时间
       flg_first_scan = false;
       return;
     }
@@ -863,8 +864,9 @@ void process_lidar()
     }
 
     // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理
+    // feats_undistort 为畸变纠正之后的点云,lidar系
     p_imu->process(Measures, kf, *feats_undistort);
-    state_point = kf.get_x();
+    state_point = kf.get_x();  // 前向传播后body的状态预测值
     pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
     if (feats_undistort->empty() || (feats_undistort == NULL))
     {
@@ -888,7 +890,7 @@ void process_lidar()
     Nearest_Points.resize(feats_down_size);
     // 迭代扩展卡尔曼滤波更新
     double solve_H_time = 0.0;
-    kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);
+    kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);  // 预测、更新
     state_point = kf.get_x();
     pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
     geoQuat.x = state_point.rot.coeffs()[0];
@@ -899,7 +901,6 @@ void process_lidar()
 
     /******* Publish odometry *******/
     publish_odometry(pubOdomAftMapped);
-    publish_velocity(pubVelo);
 
     /******* Publish points *******/
     if (path_en)
@@ -990,8 +991,8 @@ int main(int argc, char **argv)
       nh.advertise<sensor_msgs::PointCloud2>("/laser_map", 100000);
   pubOdomAftMapped = nh.advertise<nav_msgs::Odometry>("/odometry", 100000);
   sub_pub_imu = nh.advertise<nav_msgs::Odometry>("/odometry_imu", 100000);
+  pubIMUBias = nh.advertise<geometry_msgs::Twist>("/IMU_bias", 100000);
   pubPath = nh.advertise<nav_msgs::Path>("/path", 100000);
-  pubVelo = nh.advertise<geometry_msgs::Twist>("/velocity", 100000);
 
   signal(SIGINT, SigHandle);
 
@@ -1013,7 +1014,8 @@ int main(int argc, char **argv)
   // ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
   // ros::Timer timer = nh.createTimer(ros::Duration(0.02), process_lidar);
 
-  ros::MultiThreadedSpinner spinner(2);
+  ros::MultiThreadedSpinner spinner(
+      2);  // 启用x个spinner线程订阅话题，后续可以看看异步的AsyncSpinner以及为每个subscriber指定callback队列效果会不会好些
   spinner.spin();
 
   // std::thread t(process_lidar);

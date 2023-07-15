@@ -109,6 +109,7 @@ void LidarProcessor::avia_handler(
 void LidarProcessor::oust64_handler(
     const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
+    // 清除点云缓存
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -117,11 +118,12 @@ void LidarProcessor::oust64_handler(
     int plsize = pl_orig.size();
     if (plsize == 0)
         return;
-    pl_corn.reserve(plsize);
-    pl_surf.reserve(plsize);
-    pl_full.resize(plsize);
+    pl_corn.reserve(plsize);  // 角点
+    pl_surf.reserve(plsize);  // 面特征点
+    pl_full.resize(plsize);   // 全部点
 
     double time_stamp = msg->header.stamp.toSec();
+    // 默认不进行特征提取
     for (int i = 0; i < pl_orig.points.size(); i++)
     {
         if (i % point_filter_num != 0)
@@ -143,7 +145,7 @@ void LidarProcessor::oust64_handler(
         added_pt.normal_y = 0;
         added_pt.normal_z = 0;
         added_pt.curvature = pl_orig.points[i].t * time_unit_scale;
-        // use curvature as time of each laser points, curvature unit: ms
+        // use curvature as time of each laser points, curvature unit: ms, w.r.t first lidar point
 
         pl_surf.points.push_back(added_pt);
     }

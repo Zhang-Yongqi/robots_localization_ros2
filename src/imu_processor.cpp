@@ -20,6 +20,8 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true)
   cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
   Lidar_T_wrt_IMU = Zero3d;
   Lidar_R_wrt_IMU = Eye3d;
+  error_min_last = 1000000.0;
+  find_yaw = false;
   init_pose_curr = M4F::Zero();
   init_pose_last = M4F::Zero();
   fout_init.open((string)ROOT_DIR + "/log/initialization.txt", std::ios::out);
@@ -265,34 +267,28 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
     rotation_matrix *= Sophus::SO3f::exp(delta_x.block<3, 1>(3, 0)).matrix();
     predict_pose.block<3, 3>(0, 0) = rotation_matrix;
     predict_pose.block<3, 1>(0, 3) = translation;
-  }
 
-  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-  p_num = (float)trans_cloud->size();
-  p_valid = 0.0;
-  for (size_t i = 0; i < trans_cloud->size(); i++)
-  {
-    auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point))
-      continue;
-    auto trans_point = trans_cloud->points[i];
-    std::vector<float> dist;
-    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-    kdtree.Nearest_Search(trans_point, 1, points_near, dist);
-    Eigen::Vector3f closest_point =
-        Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
-    float p_dist =
-        (trans_point.x - closest_point[0]) *
-            (trans_point.x - closest_point[0]) +
-        (trans_point.y - closest_point[1]) *
-            (trans_point.y - closest_point[1]) +
-        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-    if (p_dist < 1.0)
-    {
-      p_valid += 1.0;
+    if (iter == max_iter - 1) {
+      p_num = (float)trans_cloud->size();
+      p_valid = 0.0;
+      for (size_t i = 0; i < trans_cloud->size(); i++) {
+        auto ori_point = scan->points[i];
+        if (!pcl::isFinite(ori_point)) continue;
+        auto trans_point = trans_cloud->points[i];
+        std::vector<float> dist;
+        std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+        kdtree.Nearest_Search(trans_point, 1, points_near, dist);
+        Eigen::Vector3f closest_point = Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
+        float p_dist = (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]) +
+                       (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]) +
+                       (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
+        if (p_dist < 1.0) {
+            p_valid += 1.0;
+        }
+      }
+      p_valid_proportion = p_valid / p_num;
     }
   }
-  p_valid_proportion = p_valid / p_num;
 
   fout_init << "whole dist: " << whole_dist << std::endl;
   std::cout << "whole dist: " << whole_dist << std::endl;
@@ -365,56 +361,69 @@ bool IMUProcessor::init_pose(
     PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
     vector<float> &YAW_RANGE)
 {
+  std::cout << "begin to init pose " << std::endl;
   if (meas.imu.empty())
   {
-    std::cout << "aaaa" << std::endl;
+    std::cout << "no imu meas" << std::endl;
     return false;
   };
   ROS_ASSERT(meas.lidar != nullptr);
 
   double t1 = omp_get_wtime();
-  float error_min = 1000000.0, error = 0.0;
+  float error_min = 1000000.0, p_valid_proportion_max = 0.0;
   M4F prior_with_min_error = M4F::Zero();
-  for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]);
-       i++)
-  {
-    float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
-    // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
+  if (error_min_last > 100 && find_yaw) {
+    M4F prior_with_yaw = init_pose_last;
+    error_min_last = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+    prior_with_min_error = prior_with_yaw;
+    p_valid_proportion_max = p_valid_proportion;
+  } else if (!find_yaw) {
+#ifdef MP_EN
+    omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]); i++) {
+      float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
+      // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
 
-    M4F prior_with_yaw = M4F::Zero();
-    M3F rotation_yaw = M3F::Zero();
-    rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw),
-        std::cos(yaw), 0.0, 0.0, 0.0, 1.0;
-    prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
-    prior_with_yaw.block<3, 3>(0, 0) =
-        rotation_yaw * init_pose_last.block<3, 3>(0, 0);
+      float error = 0.0;
+      M4F prior_with_yaw = M4F::Zero();
+      M3F rotation_yaw = M3F::Zero();
+      rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw), std::cos(yaw), 0.0, 0.0, 0.0, 1.0;
+      prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
+      prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * init_pose_last.block<3, 3>(0, 0);
 
-    if (method == "NDT")
-    {
-      error = init_ndt_method(meas.lidar, prior_with_yaw);
-    }
-    else if (method == "ICP")
-    {
-      error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
-    }
-    else if (method == "PPICP")
-    {
+      // if (method == "NDT") {
+      //   error = init_ndt_method(meas.lidar, prior_with_yaw);
+      // }
+      // else if (method == "ICP") {
+      //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
+      // }
+      // else if (method == "PPICP") {
       error = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+      // }
+      // else
+      // {
+      //   std::cerr << "Not valid method!" << std::endl;
+      //   return false;
+      // }
+#ifdef MP_EN
+#pragma omp critical
+#endif
+      {
+        if (error < error_min) {
+            error_min = error;
+            prior_with_min_error = prior_with_yaw;
+            p_valid_proportion_max = p_valid_proportion;
+        }
+      }
+      // if (error_min < 100)
+      // {
+      //   break;
+      // }
     }
-    else
-    {
-      std::cerr << "Not valid method!" << std::endl;
-      return false;
-    }
-    if (error < error_min)
-    {
-      error_min = error;
-      prior_with_min_error = prior_with_yaw;
-    }
-    if (error_min < 100)
-    {
-      break;
-    }
+    find_yaw = true;
+    error_min_last = error_min;
   }
   init_pose_curr = prior_with_min_error;
   double t2 = omp_get_wtime();
@@ -447,16 +456,13 @@ bool IMUProcessor::init_pose(
       init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
   fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
             << "delta_rvec: " << delta_rvec.norm() << std::endl;
-  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 &&
-      init_pose_curr(0, 3) < 30.0 && init_pose_curr(0, 3) > -2.0 &&
-      init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
-      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 &&
-      p_valid_proportion > 0.5)
-  {
+  if (delta_tvec.norm() < 0.05 && delta_rvec.norm() < 0.05 && init_pose_curr(0, 3) < 30.0 &&
+      init_pose_curr(0, 3) > -2.0 && init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
+      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 && p_valid_proportion_max > 0.75) {
     /// The very first lidar frame
     imu_init(meas, kf_state, init_iter_num);
-    last_imu_ = meas.imu.back();
-    last_imu_only_ = meas.imu.back();
+    // last_imu_ = meas.imu.back();
+    // last_imu_only_ = meas.imu.back(); imu_init里赋值过了
 
     state_ikfom imu_state = kf_state.get_x();
     if (init_iter_num > MAX_INI_COUNT)
@@ -501,10 +507,10 @@ bool IMUProcessor::init_pose(
   }
   std::cout << "init pose last change" << std::endl;
   init_pose_last = init_pose_curr;
+  p_valid_proportion_max = 0.0f;
   p_valid_proportion = 0.0f;
   p_num = 0.0f;
   p_valid = 0.0f;
-  std::cout << "wo zai zui hou" << std::endl;
   return false;
 }
 
@@ -560,6 +566,7 @@ void IMUProcessor::process(
     if (tail->header.stamp.toSec() < last_lidar_end_time_)
       continue;
 
+    // 中值
     angvel_avr << 0.5 * (head->angular_velocity.x + tail->angular_velocity.x),
         0.5 * (head->angular_velocity.y + tail->angular_velocity.y),
         0.5 * (head->angular_velocity.z + tail->angular_velocity.z);
@@ -569,9 +576,9 @@ void IMUProcessor::process(
         0.5 * (head->linear_acceleration.z + tail->linear_acceleration.z);
 
     // 通过重力数值对加速度进行一下微调
-    acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
+    acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
 
-    // 如果IMU开始时刻早于上次雷达最晚时刻
+    // 如果IMU开始时刻早于上次雷达最晚时刻(因为将上次最后一个IMU插入到此次开头了，所以会出现这种情况)
     if (head->header.stamp.toSec() < last_lidar_end_time_)
     {
       dt = tail->header.stamp.toSec() - last_lidar_end_time_;
@@ -582,13 +589,15 @@ void IMUProcessor::process(
     }
     fout_init << "dt: " << dt << std::endl;
 
+    // 原始测量的中值作为输入
     in.acc = acc_avr;
     in.gyro = angvel_avr;
+    // 过程噪声协方差矩阵
     Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
     Q.block<3, 3>(3, 3).diagonal() = cov_acc;
     Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
-    if (dt < 0.1)
+    if (dt < 0.1)  // fastlio2里没有该判断
     {
       kf_state.predict(dt, Q, in);
     }
@@ -609,6 +618,7 @@ void IMUProcessor::process(
   fout_init << std::endl;
 
   /*** calculated the pos and attitude prediction at the frame-end ***/
+  // 判断雷达结束时间是否晚于IMU，最后一个IMU时刻可能早于雷达末尾 也可能晚于雷达末尾
   double note = pcl_end_time > imu_end_time ? 1.0 : -1.0;
   dt = note * (pcl_end_time - imu_end_time);
   kf_state.predict(dt, Q, in);
@@ -631,6 +641,13 @@ void IMUProcessor::process(
     acc_imu << VEC_FROM_ARRAY(tail->acc);
     angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
+    // 1：P_I=imu_state.offset_R_L_I * P_i + imu_state.offset_T_L_I->将t_n时刻雷达系下的点P_i
+    // 转换到imu系，得到点P_I
+    // 2：P_w=R_i *P_I+pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt->在t_n时刻下将点P_I转到世界得到点P_w
+    // 3：P_ie=imu_state.rot.conjugate()*P_w - imu_state.pos
+    // ->将将t_n时刻的点P_w转到最后时刻t_e下的imu坐标系得到点P_ie
+    // 4：P_compensate=imu_state.offset_R_L_I.conjugate() *(P_ie -imu_state.offset_T_L_I)
+    // ->在t_e时刻下，将点P_ie转的雷达坐标系得到点P_compensate，完成运动补偿
     for (; it_pcl->curvature / double(1000) > head->offset_time; it_pcl--)
     {
       dt = it_pcl->curvature / double(1000) - head->offset_time;
@@ -644,7 +661,7 @@ void IMUProcessor::process(
 
       // 点所在时刻的位置(雷达坐标系下)
       V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
-      // 从点所在的世界位置-雷达末尾世界位置
+      // 从点所在的世界位置-雷达末尾世界位置，匀加速模型，加速度影响大吗？
       V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt -
                imu_state.pos);
       ///////////////////////////////////////////////////////////////////////
@@ -709,19 +726,16 @@ bool IMUProcessor::process_imu_only(
                        imu_data->angular_velocity.x),
       0.5 * (last_imu_only_->angular_velocity.y + imu_data->angular_velocity.y),
       0.5 * (last_imu_only_->angular_velocity.z + imu_data->angular_velocity.z);
-  acc_avr << 0.5 * (last_imu_only_->linear_acceleration.x +
-                    imu_data->linear_acceleration.x),
-      0.5 * (last_imu_only_->linear_acceleration.y +
-             imu_data->linear_acceleration.z),
-      0.5 * (last_imu_only_->linear_acceleration.y +
-             imu_data->linear_acceleration.z);
+  acc_avr << 0.5 * (last_imu_only_->linear_acceleration.x + imu_data->linear_acceleration.x),
+      0.5 * (last_imu_only_->linear_acceleration.y + imu_data->linear_acceleration.y),
+      0.5 * (last_imu_only_->linear_acceleration.z + imu_data->linear_acceleration.z);
 
   // 通过重力数值对加速度进行一下微调
-  acc_avr = acc_avr * G_m_s2 / mean_acc.norm(); // - state_inout.ba;
+  acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
 
   dt = imu_data->header.stamp.toSec() - last_imu_only_->header.stamp.toSec();
-  in.acc = acc_avr - imu_state.ba;
-  in.gyro = angvel_avr - imu_state.bg;
+  in.acc = acc_avr;
+  in.gyro = angvel_avr;
   if (dt < 0.1)
   {
     kf_state.predict_imu_only(dt, in);

@@ -10,12 +10,13 @@
 #pragma once
 
 #include <common_lib.h>
-
 #include <pcl/common/transforms.h>
 #include <sensor_msgs/Imu.h>
-#include "ikd-Tree/ikd_Tree.h"
+
+#include <fstream>
 #include <sophus/so3.hpp>
 
+#include "ikd-Tree/ikd_Tree.h"
 #include "use-ikfom.h"
 
 #define MAX_INI_COUNT (10)
@@ -96,6 +97,8 @@ private:
   M3D Lidar_R_wrt_IMU;
   V3D Lidar_T_wrt_IMU;
 
+  float error_min_last;
+  bool find_yaw;
   M4F init_pose_curr;
   M4F init_pose_last;
   bool b_first_frame_;

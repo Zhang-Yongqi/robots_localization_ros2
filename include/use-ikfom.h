@@ -35,7 +35,7 @@ MTK::get_cov<process_noise_ikfom>::type process_noise_cov() {
 
 // double L_offset_to_I[3] = {0.04165, 0.02326, -0.0284}; // Avia
 // vect3 Lidar_offset_to_IMU(L_offset_to_I, 3);
-// fast_lio2论文公式(2), 起始这里的f就是将imu的积分方程组成矩阵形式然后再去计算
+// fast_lio2论文公式(2), 起始这里的f就是将imu的积分方程组成矩阵形式然后再去计算，认为噪声w=0，名义状态变量
 Eigen::Matrix<double, 24, 1> get_f(state_ikfom &s, const input_ikfom &in) {
   // 24对应速度(3)，角速度(3),外参偏置T(3),外参偏置R(3)，加速度(3),角速度偏置(3),
   // 加速度偏置(3),位置(3)，与论文公式不一致
@@ -60,9 +60,9 @@ Eigen::Matrix<double, 24, 23> df_dx(state_ikfom &s, const input_ikfom &in) {
   cov.template block<3, 3>(0, 12) = Eigen::Matrix3d::Identity();  //速度转移
 
   vect3 acc_;
-  in.acc.boxminus(acc_, s.ba);  // 加速度
+  in.acc.boxminus(acc_, s.ba);  // 加速度a_m - bias
   vect3 omega;
-  in.gyro.boxminus(omega, s.bg);  // 角速度
+  in.gyro.boxminus(omega, s.bg);  // 角速度w_m - bias
   cov.template block<3, 3>(12, 3) = -s.rot.toRotationMatrix() * MTK::hat(acc_);
   // 这里的-s.rot.toRotationMatrix()是因为论文中的矩阵是逆时针旋转的
 
@@ -71,7 +71,7 @@ Eigen::Matrix<double, 24, 23> df_dx(state_ikfom &s, const input_ikfom &in) {
   Eigen::Matrix<state_ikfom::scalar, 2, 1> vec =
       Eigen::Matrix<state_ikfom::scalar, 2, 1>::Zero();
   Eigen::Matrix<state_ikfom::scalar, 3, 2> grav_matrix;
-  s.S2_Mx(grav_matrix, vec, 21);  // TODO:将vec的2*1矩阵转为grav_matrix的3*2矩阵
+  s.S2_Mx(grav_matrix, vec, 21);  // 将vec的2*1矩阵转为grav_matrix的3*2矩阵
   cov.template block<3, 2>(12, 21) = grav_matrix;
   // std::cout << "grav_mat: " << grav_matrix << std::endl << std::endl;
 

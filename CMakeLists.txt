@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.0.2)
 
-set(CMAKE_C_COMPILER "/usr/bin/gcc")
-set(CMAKE_CXX_COMPILER "/usr/bin/g++")
-set(CMAKE_C_COMPILER "/usr/bin/clang")
-set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+#set(CMAKE_C_COMPILER "/usr/bin/gcc")
+#set(CMAKE_CXX_COMPILER "/usr/bin/g++")
+#set(CMAKE_C_COMPILER "/usr/bin/clang")
+#set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 
 set(CMAKE_CXX_FLAGS "-std=c++14 -O3" )
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace")
 set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 # set(CC "ccache gcc")
 # set(CXX "ccache g++")
@@ -36,7 +36,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
   message("Processer number:  ${N}")
   if(N GREATER 4)
     add_definitions(-DMP_EN)
-    add_definitions(-DMP_PROC_NUM=3)
+    add_definitions(-DMP_PROC_NUM=19)
     message("core for MP: 3")
   elseif(N GREATER 3)
     add_definitions(-DMP_EN)
@@ -84,6 +84,8 @@ include_directories(
   ${Sophus_INCLUDE_DIRS}
   include
   "/home/cyl/code/ws_localization/devel/include"
+  "/home/hitcrt/文档/cyl/rm2023_sentry_msgs/build/devel/include"
+  "src"
   )
 
 add_message_files(
@@ -111,7 +113,7 @@ catkin_package(
 
 
 
-
+add_subdirectory(src)
 
 add_executable(robots_localization src/robots_localization_node.cpp)
 add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
@@ -146,6 +148,7 @@ ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} fmt
 ikd_Tree
 imu_processor
 lidar_processor
+monitor
 )
 
 

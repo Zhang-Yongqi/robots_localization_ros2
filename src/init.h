@@ -6,7 +6,7 @@ ros::Publisher pubLaserCloudFull_world;
 ros::Publisher pubLaserCloudMap;
 ros::Publisher pubOdomAftMapped;
 ros::Publisher pubPath;
-ros::Publisher pubVelo;
+ros::Publisher pubIMUBias;
 ros::Time start_time;
 ros::Time end_time;
 ros::Duration duration_time;
