@@ -13,7 +13,7 @@ preprocess:
     scan_line: 64
     blind: 0.6 # 最小距离阈值，即过滤掉0～blind范围内的点云
     timestamp_unit: 3 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-    point_filter_num: 8
+    point_filter_num: 4
 
 mapping:
     acc_cov: 1e-4
@@ -34,8 +34,8 @@ publish:
     scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
 max_iteration: 3
-filter_size_surf: 0.05
-filter_size_map: 0.15
+filter_size_surf: 0.2
+filter_size_map: 0.2
 cube_side_length: 1000
 runtime_pos_log_enable: 1
 # init_method: PPICP

@@ -456,9 +456,9 @@ bool IMUProcessor::init_pose(
       init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
   fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
             << "delta_rvec: " << delta_rvec.norm() << std::endl;
-  if (delta_tvec.norm() < 0.05 && delta_rvec.norm() < 0.05 && init_pose_curr(0, 3) < 30.0 &&
+  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 && init_pose_curr(0, 3) < 30.0 &&
       init_pose_curr(0, 3) > -2.0 && init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
-      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 && p_valid_proportion_max > 0.75) {
+      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 && p_valid_proportion_max > 0.5) {
     /// The very first lidar frame
     imu_init(meas, kf_state, init_iter_num);
     // last_imu_ = meas.imu.back();
