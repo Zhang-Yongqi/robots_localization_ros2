@@ -36,6 +36,7 @@
 .avi
 .mp4
 .pcd
+map
 
 # Executables
 *.exe
