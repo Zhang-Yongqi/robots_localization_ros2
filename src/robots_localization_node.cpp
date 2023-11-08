@@ -257,6 +257,7 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 
   publish_count++;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
+  msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() - time_diff_lidar_to_imu);
   // 将IMU和激光雷达点云的时间戳对齐（livox）
   if (abs(timediff_lidar_wrt_imu) > 0.1 && time_sync_en)
   {
@@ -264,8 +265,7 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
                                             msg_in->header.stamp.toSec());
   }
   // 将IMU和激光雷达点云的时间戳对齐（else）
-  msg->header.stamp = ros::Time().fromSec(msg_in->header.stamp.toSec() -
-                                          time_diff_lidar_to_imu);
+
   double timestamp = msg->header.stamp.toSec();
 
   // 上锁
