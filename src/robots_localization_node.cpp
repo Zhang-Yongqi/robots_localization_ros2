@@ -220,6 +220,8 @@ void livox_pcl_cbk(const robots_localization::LivoxMsg::ConstPtr &msg)
   time_buffer.push_back(last_timestamp_lidar);
 
   mtx_buffer.unlock();
+  process_lidar();
+
   sig_buffer.notify_all();
 }
 
