@@ -54,9 +54,9 @@ void IMUProcessor::reset()
   cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
 }
 
-void IMUProcessor::set_init_pose(const V3F &poseT)
+void IMUProcessor::set_init_pose(const V3F &poseT,const M3F &poseR)
 {
-  init_pose_last.block<3, 3>(0, 0) = Eye3f;
+  init_pose_last.block<3, 3>(0, 0) = poseR;
   init_pose_last.block<3, 1>(0, 3) = poseT;
 }
 
@@ -332,15 +332,15 @@ void IMUProcessor::imu_init(
     N++;
   }
   state_ikfom init_state = kf_state.get_x();
-  init_state.grav = S2(-mean_acc / mean_acc.norm() * G_m_s2);
+  init_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
+  init_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
+  init_state.vel = vect3(V3D(0.0, 0.0, 0.0));
+  init_state.grav = init_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
   // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
 
   init_state.bg = mean_gyr; // 角速度测量均值作为陀螺仪偏差
   init_state.offset_T_L_I = Lidar_T_wrt_IMU;
   init_state.offset_R_L_I = Lidar_R_wrt_IMU;
-  init_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
-  init_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
-  init_state.vel = vect3(V3D(0.0, 0.0, 0.0));
   kf_state.change_x(init_state);
 
   esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
@@ -426,6 +426,26 @@ bool IMUProcessor::init_pose(
     error_min_last = error_min;
   }
   init_pose_curr = prior_with_min_error;
+
+  // M3F rotMatrix= init_pose_curr.block<3, 3>(0, 0);
+  // double roll, yaw, pitch;
+  // double sy = sqrt(rotMatrix(0, 0) * rotMatrix(0, 0) + rotMatrix(1, 0) * rotMatrix(1, 0));
+  // bool singular = sy < 1e-6;  // If
+  // if (!singular) {
+  //     int sign = 0;
+  //     roll = atan(rotMatrix(2, 1) / rotMatrix(2, 2));
+  //     yaw = atan(rotMatrix(1, 0) / rotMatrix(0, 0));
+  //     sign = (rotMatrix(2, 1) > 0 && pitch > 0 || rotMatrix(2, 1) < 0 && pitch < 0) ? 1 : -1;
+  //     pitch = atan2(-rotMatrix(2, 0), sign * sy);
+  // } else {
+  //     int sign = 0;
+  //     roll = atan(-rotMatrix(1, 2) / rotMatrix(1, 1));
+  //     yaw = 0;
+  //     sign = (rotMatrix(2, 1) > 0 && pitch > 0 || rotMatrix(2, 1) < 0 && pitch < 0) ? 1 : -1;
+  //     pitch = atan2(-rotMatrix(2, 0), sign * sy);
+  // }
+  // std::cout<<roll*180/PI_M<<" "<<yaw*180/PI_M<<std::endl;
+
   double t2 = omp_get_wtime();
   fout_init << "Init align time cost " << t2 - t1 << "s. " << std::endl
             << "Current pos:  " << std::endl

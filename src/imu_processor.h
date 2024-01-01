@@ -37,7 +37,7 @@ public:
 
   void reset();
 
-  void set_init_pose(const V3F &poseT);
+  void set_init_pose(const V3F &poseT, const M3F &poseR);
 
   void set_extrinsic(const V3D &transl, const M3D &rot);
 

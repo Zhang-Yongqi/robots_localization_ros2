@@ -57,8 +57,10 @@ V3F reloc_initT(Zero3f);
 vector<float> red_priorT(3, 0.0);
 vector<float> blue_priorT(3, 0.0);
 vector<float> YAW_RANGE(3, 0.0);
+vector<float> priorR(9, 0.0);
 V3F red_prior_T(Zero3f);
 V3F blue_prior_T(Zero3f);
+M3F prior_R(Eye3f);
 bool mode_status = 0, mode_changed = false, pose_inited = false; // 0为红方，1 为蓝方
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
@@ -180,6 +182,8 @@ void loadConfig(const ros::NodeHandle &nh)
                           vector<float>(3, 0.0));
   nh.param<vector<float>>("prior/blue_prior_T", blue_priorT,
                           vector<float>(3, 0.0));
+  nh.param<vector<float>>("prior/prior_R", priorR,
+                          vector<float>(9, 0.0));
 }
 
 double timediff_lidar_wrt_imu = 0.0; // lidar imu 时间差
@@ -787,11 +791,21 @@ void h_share_model(state_ikfom &s,
   }
 }
 
+// bool isinit=false; // 无串口时调试用
+
 /**
  * 雷达处理回调函数
  */
 void process_lidar()
 {
+  
+  // 无串口时调试用
+  // if(isinit==false)
+  // {
+  //   mode_changed=true;
+  //   isinit=true;
+  // }
+
   // ros::Rate loop_rate(30);
   // while (ros::ok())
   // {
@@ -799,13 +813,13 @@ void process_lidar()
   {
     if (mode_status)
     {
-      p_imu->set_init_pose(blue_prior_T);
+      p_imu->set_init_pose(blue_prior_T,prior_R);
       std::cout << "init with blue" << std::endl
                 << std::endl;
     }
     else
     {
-      p_imu->set_init_pose(red_prior_T);
+      p_imu->set_init_pose(red_prior_T,prior_R);
       std::cout << "init with red" << std::endl
                 << std::endl;
     }
@@ -848,7 +862,7 @@ void process_lidar()
         if (!initT_flag)
         {
           p_imu->reset();
-          p_imu->set_init_pose(reloc_initT);
+          p_imu->set_init_pose(reloc_initT,prior_R);
           p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
           p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
           p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
@@ -961,6 +975,7 @@ int main(int argc, char **argv)
 
   red_prior_T << VEC_FROM_ARRAY(red_priorT);
   blue_prior_T << VEC_FROM_ARRAY(blue_priorT);
+  prior_R << MAT_FROM_ARRAY(priorR);
   std::cout << "red init T: " << red_prior_T << std::endl;
   std::cout << "blue init T: " << blue_prior_T << std::endl;
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
