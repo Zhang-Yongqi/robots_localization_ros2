@@ -20,14 +20,11 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true)
   cov_bias_acc = V3D(0.0001, 0.0001, 0.0001);
   Lidar_T_wrt_IMU = Zero3d;
   Lidar_R_wrt_IMU = Eye3d;
-  error_min_last = 1000000.0;
   find_yaw = false;
+  imu_need_init_ = true;
   init_pose_curr = M4F::Zero();
   init_pose_last = M4F::Zero();
   fout_init.open((string)ROOT_DIR + "/log/initialization.txt", std::ios::out);
-  p_valid_proportion = 0.0f;
-  p_num = 0.0f;
-  p_valid = 0.0f;
 }
 
 IMUProcessor::~IMUProcessor() {}
@@ -43,10 +40,9 @@ void IMUProcessor::reset()
   last_imu_.reset(new sensor_msgs::Imu());
   last_imu_only_.reset(new sensor_msgs::Imu());
   Q = process_noise_cov();
-  p_valid_proportion = 0.0f;
-  p_num = 0.0f;
-  p_valid = 0.0f;
   b_first_frame_ = true;
+  find_yaw = false;
+  imu_need_init_ = true;
 
   cov_acc = V3D(0.1, 0.1, 0.1);
   cov_gyr = V3D(0.1, 0.1, 0.1);
@@ -58,6 +54,8 @@ void IMUProcessor::set_init_pose(const V3F &poseT,const M3F &poseR)
 {
   init_pose_last.block<3, 3>(0, 0) = poseR;
   init_pose_last.block<3, 1>(0, 3) = poseT;
+  init_pose_curr.block<3, 3>(0, 0) = poseR;
+  init_pose_curr.block<3, 1>(0, 3) = poseT;
 }
 
 void IMUProcessor::set_extrinsic(const MD(4, 4) & T)
@@ -92,186 +90,72 @@ float IMUProcessor::init_ndt_method(PointCloudXYZI::Ptr scan,
   return 0.0;
 }
 
-float IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree,
-                                    PointCloudXYZI::Ptr scan,
-                                    M4F &predict_pose)
-{
-  PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
-  int knn_num = 1;
-  M3F rotation_matrix;
-  V3F translation;
-  rotation_matrix = predict_pose.block<3, 3>(0, 0);
-  translation = predict_pose.block<3, 1>(0, 3);
-  float whole_dist = 0.0;
+std::pair<float, float> IMUProcessor::init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
+                                                      M4F &predict_pose) {
+    PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
+    int knn_num = 1;
+    M3F rotation_matrix;
+    V3F translation;
+    rotation_matrix = predict_pose.block<3, 3>(0, 0);
+    translation = predict_pose.block<3, 1>(0, 3);
+    float whole_dist = 0.0;
+    float p_valid_proportion = 0.0;
 
-  for (int iter = 0; iter < max_iter; iter++)
-  {
-    pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-    Eigen::Matrix<float, 6, 6> H;
-    Eigen::Matrix<float, 6, 1> b;
-    H.setZero();
-    b.setZero();
+    for (int iter = 0; iter < max_iter; iter++) {
+        pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
+        Eigen::Matrix<float, 6, 6> H;
+        Eigen::Matrix<float, 6, 1> b;
+        H.setZero();
+        b.setZero();
 
-    whole_dist = 0.0;
-    int point_num = trans_cloud->size();
+        whole_dist = 0.0;
+        int point_num = trans_cloud->size();
 #ifdef MP_EN
-    omp_set_num_threads(MP_PROC_NUM);
+        omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-    for (size_t i = 0; i < point_num; i++)
-    {
-      auto ori_point = scan->points[i];
-      // pcl::isFinite()用来检查点云中是否有NaN值
-      if (!pcl::isFinite(ori_point))
-        continue;
-      auto trans_point = trans_cloud->points[i];
-      std::vector<float> dist;
-      // Eigen::aligned_allocator<PointType> 是一个内存分配器，它用于为存储在
-      // std::vector 中的 PointType 对象分配内存。
-      std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-      // dist是临近点到搜索点trans_point的距离
-      kdtree.Nearest_Search(trans_point, knn_num, points_near, dist);
+        for (size_t i = 0; i < point_num; i++) {
+            auto ori_point = scan->points[i];
+            // pcl::isFinite()用来检查点云中是否有NaN值
+            if (!pcl::isFinite(ori_point)) continue;
+            auto trans_point = trans_cloud->points[i];
+            std::vector<float> dist;
+            // Eigen::aligned_allocator<PointType> 是一个内存分配器，它用于为存储在
+            // std::vector 中的 PointType 对象分配内存。
+            std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+            // dist是临近点到搜索点trans_point的距离
+            kdtree.Nearest_Search(trans_point, knn_num, points_near, dist);
 
-      Eigen::Vector3f closest_point =
-          Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
-      // 临近点距离的向量
-      Eigen::Vector3f error_dist =
-          Eigen::Vector3f(trans_point.x, trans_point.y, trans_point.z) -
-          closest_point;
-      whole_dist += (trans_point.x - closest_point[0]) *
-                    (trans_point.x - closest_point[0]),
-          (trans_point.y - closest_point[1]) *
-              (trans_point.y - closest_point[1]),
-          (trans_point.z - closest_point[2]) *
-              (trans_point.z - closest_point[2]);
+            Eigen::Vector3f closest_point =
+                Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
+            // 临近点距离的向量
+            Eigen::Vector3f error_dist =
+                Eigen::Vector3f(trans_point.x, trans_point.y, trans_point.z) - closest_point;
+            whole_dist += (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]),
+                (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]),
+                (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
 
-      Eigen::Matrix<float, 3, 6> J(Eigen::Matrix<float, 3, 6>::Zero());
-      J.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
-      J.block<3, 3>(0, 3) =
-          -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(
-                                 ori_point.x, ori_point.y, ori_point.z));
-      H += J.transpose() * J;
-      b += -J.transpose() * error_dist;
+            Eigen::Matrix<float, 3, 6> J(Eigen::Matrix<float, 3, 6>::Zero());
+            J.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
+            J.block<3, 3>(0, 3) =
+                -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(ori_point.x, ori_point.y, ori_point.z));
+            H += J.transpose() * J;
+            b += -J.transpose() * error_dist;
+        }
+
+        // H.ldlt()返回一个对角线矩阵，它是用H的一个特征分解所得，solve(b)方法调用了对角线矩阵的求逆
+        // H.ldlt().solve(b)是通过使用特征分解求线性方程组Hx=b
+        Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
+        translation += delta_x.block<3, 1>(0, 0);
+        rotation_matrix *= Sophus::SO3f::exp(delta_x.block<3, 1>(3, 0)).matrix();
+        predict_pose.block<3, 3>(0, 0) = rotation_matrix;
+        predict_pose.block<3, 1>(0, 3) = translation;
     }
 
-    // H.ldlt()返回一个对角线矩阵，它是用H的一个特征分解所得，solve(b)方法调用了对角线矩阵的求逆
-    // H.ldlt().solve(b)是通过使用特征分解求线性方程组Hx=b
-    Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
-    translation += delta_x.block<3, 1>(0, 0);
-    rotation_matrix *= Sophus::SO3f::exp(delta_x.block<3, 1>(3, 0)).matrix();
-    predict_pose.block<3, 3>(0, 0) = rotation_matrix;
-    predict_pose.block<3, 1>(0, 3) = translation;
-  }
-
-  pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-  p_num = (float)trans_cloud->size();
-  p_valid = 0.0;
-  for (size_t i = 0; i < trans_cloud->size(); i++)
-  {
-    auto ori_point = scan->points[i];
-    if (!pcl::isFinite(ori_point))
-      continue;
-    auto trans_point = trans_cloud->points[i];
-    std::vector<float> dist;
-    std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-    kdtree.Nearest_Search(trans_point, 1, points_near, dist);
-    Eigen::Vector3f closest_point =
-        Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
-    float p_dist =
-        (trans_point.x - closest_point[0]) *
-            (trans_point.x - closest_point[0]) +
-        (trans_point.y - closest_point[1]) *
-            (trans_point.y - closest_point[1]) +
-        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-    if (p_dist < 1.0)
-    {
-      p_valid += 1.0;
-    }
-  }
-  p_valid_proportion = p_valid / p_num;
-
-  fout_init << "whole dist: " << whole_dist << std::endl;
-  std::cout << "whole dist: " << whole_dist << std::endl;
-  return whole_dist;
-}
-
-float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
-                                      PointCloudXYZI::Ptr scan,
-                                      M4F &predict_pose)
-{
-  PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
-  M3F rotation_matrix;
-  V3F translation;
-  rotation_matrix = predict_pose.block<3, 3>(0, 0);
-  translation = predict_pose.block<3, 1>(0, 3);
-  float whole_dist = 0.0;
-
-  for (int iter = 0; iter < max_iter; iter++)
-  {
     pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
-    Eigen::Matrix<float, 6, 6> H;
-    Eigen::Matrix<float, 6, 1> b;
-    H.setZero();
-    b.setZero();
-
-    whole_dist = 0.0;
-    int point_num = trans_cloud->size();
-#ifdef MP_EN
-    omp_set_num_threads(MP_PROC_NUM);
-#pragma omp parallel for
-#endif
-    for (size_t i = 0; i < point_num; i++)
-    {
-      auto ori_point = scan->points[i];
-      if (!pcl::isFinite(ori_point))
-        continue;
-      auto trans_point = trans_cloud->points[i];
-      std::vector<float> dist;
-      std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
-      kdtree.Nearest_Search(trans_point, NUM_MATCH_POINTS, points_near, dist);
-
-      VF(4)
-      abcd;
-      esti_plane(abcd, points_near, plane_dist);
-      float error_dist = abcd[0] * trans_point.x + abcd[1] * trans_point.y +
-                         abcd[2] * trans_point.z + abcd[3];
-      if (error_dist < 0.0)
-      {
-        mtx_error.lock();
-        whole_dist += -error_dist;
-        mtx_error.unlock();
-      }
-      else
-      {
-        mtx_error.lock();
-        whole_dist += error_dist;
-        mtx_error.unlock();
-      }
-
-      Eigen::Matrix<float, 1, 6> J(Eigen::Matrix<float, 1, 6>::Zero());
-      J.block<1, 3>(0, 0) << abcd[0], abcd[1], abcd[2];
-      Eigen::Matrix<float, 3, 3> tmp =
-          -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(
-                                 ori_point.x, ori_point.y, ori_point.z));
-      J.block<1, 3>(0, 3) << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) +
-                                 abcd[2] * tmp(2, 0),
-          abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
-          abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
-
-      H += J.transpose() * J;
-      b += -J.transpose() * error_dist;
-    }
-
-    Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
-    translation += delta_x.block<3, 1>(0, 0);
-    rotation_matrix *= Sophus::SO3f::exp(delta_x.block<3, 1>(3, 0)).matrix();
-    predict_pose.block<3, 3>(0, 0) = rotation_matrix;
-    predict_pose.block<3, 1>(0, 3) = translation;
-
-    if (iter == max_iter - 1) {
-      p_num = (float)trans_cloud->size();
-      p_valid = 0.0;
-      for (size_t i = 0; i < trans_cloud->size(); i++) {
+    float p_num = (float)trans_cloud->size();
+    float p_valid = 0.0;
+    for (size_t i = 0; i < trans_cloud->size(); i++) {
         auto ori_point = scan->points[i];
         if (!pcl::isFinite(ori_point)) continue;
         auto trans_point = trans_cloud->points[i];
@@ -282,169 +166,258 @@ float IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree,
         float p_dist = (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]) +
                        (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]) +
                        (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
-        if (p_dist < 1.0) {
+        if (p_dist < 0.01) {
             p_valid += 1.0;
         }
-      }
-      p_valid_proportion = p_valid / p_num;
     }
-  }
+    p_valid_proportion = p_valid / p_num;
 
-  fout_init << "whole dist: " << whole_dist << std::endl;
-  std::cout << "whole dist: " << whole_dist << std::endl;
-  return whole_dist;
+    fout_init << "whole dist: " << whole_dist << " ";
+    std::cout << "whole dist: " << whole_dist << " ";
+    fout_init << "p_valid_proportion: " << p_valid_proportion << std::endl;
+    std::cout << "p_valid_proportion: " << p_valid_proportion << std::endl;
+    return std::make_pair(whole_dist, p_valid_proportion);
+}
+
+std::pair<float, float> IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
+                                                        M4F &predict_pose) {
+    PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
+    M3F rotation_matrix;
+    V3F translation;
+    rotation_matrix = predict_pose.block<3, 3>(0, 0);
+    translation = predict_pose.block<3, 1>(0, 3);
+    float whole_dist = 0.0;
+    float p_valid_proportion = 0.0;
+
+    for (int iter = 0; iter < max_iter; iter++) {
+        pcl::transformPointCloud(*scan, *trans_cloud, predict_pose);
+        Eigen::Matrix<float, 6, 6> H;
+        Eigen::Matrix<float, 6, 1> b;
+        H.setZero();
+        b.setZero();
+
+        whole_dist = 0.0;
+        int point_num = trans_cloud->size();
+#ifdef MP_EN
+        omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+        for (size_t i = 0; i < point_num; i++) {
+            auto ori_point = scan->points[i];
+            if (!pcl::isFinite(ori_point)) continue;
+            auto trans_point = trans_cloud->points[i];
+            std::vector<float> dist;
+            std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+            kdtree.Nearest_Search(trans_point, NUM_MATCH_POINTS, points_near, dist);
+
+            VF(4)
+            abcd;
+            esti_plane(abcd, points_near, plane_dist);
+            float error_dist =
+                abcd[0] * trans_point.x + abcd[1] * trans_point.y + abcd[2] * trans_point.z + abcd[3];
+            if (error_dist < 0.0) {
+                mtx_error.lock();
+                whole_dist += -error_dist;
+                mtx_error.unlock();
+            } else {
+                mtx_error.lock();
+                whole_dist += error_dist;
+                mtx_error.unlock();
+            }
+
+            Eigen::Matrix<float, 1, 6> J(Eigen::Matrix<float, 1, 6>::Zero());
+            J.block<1, 3>(0, 0) << abcd[0], abcd[1], abcd[2];
+            Eigen::Matrix<float, 3, 3> tmp =
+                -rotation_matrix * Sophus::SO3f::hat(Eigen::Vector3f(ori_point.x, ori_point.y, ori_point.z));
+            J.block<1, 3>(0, 3) << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) + abcd[2] * tmp(2, 0),
+                abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
+                abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
+
+            H += J.transpose() * J;
+            b += -J.transpose() * error_dist;
+        }
+
+        Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
+        translation += delta_x.block<3, 1>(0, 0);
+        rotation_matrix *= Sophus::SO3f::exp(delta_x.block<3, 1>(3, 0)).matrix();
+        predict_pose.block<3, 3>(0, 0) = rotation_matrix;
+        predict_pose.block<3, 1>(0, 3) = translation;
+
+        if (iter == max_iter - 1) {
+            float p_num = (float)trans_cloud->size();
+            float p_valid = 0.0;
+            for (size_t i = 0; i < trans_cloud->size(); i++) {
+                auto ori_point = scan->points[i];
+                if (!pcl::isFinite(ori_point)) continue;
+                auto trans_point = trans_cloud->points[i];
+                std::vector<float> dist;
+                std::vector<PointType, Eigen::aligned_allocator<PointType>> points_near;
+                kdtree.Nearest_Search(trans_point, 1, points_near, dist);
+                Eigen::Vector3f closest_point =
+                    Eigen::Vector3f(points_near[0].x, points_near[0].y, points_near[0].z);
+                float p_dist = (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]) +
+                               (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]) +
+                               (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
+                if (p_dist < 0.01) {
+                    p_valid += 1.0;
+                }
+            }
+            p_valid_proportion = p_valid / p_num;
+        }
+    }
+
+    fout_init << "whole dist: " << whole_dist << " ";
+    std::cout << "whole dist: " << whole_dist << " ";
+    fout_init << "p_valid_proportion: " << p_valid_proportion << std::endl;
+    std::cout << "p_valid_proportion: " << p_valid_proportion << std::endl;
+    return std::make_pair(whole_dist, p_valid_proportion);
 }
 
 /** 1. initialize the gravity, gyro bias, acc and gyro covariance
  ** 2. normalize the acceleration measurenments to unit gravity **/
-void IMUProcessor::imu_init(
-    const MeasureGroup &meas,
-    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N)
-{
-  V3D cur_acc, cur_gyr;
-  if (b_first_frame_)
-  {
-    reset();
-    b_first_frame_ = false;
-    const auto &imu_acc = meas.imu.front()->linear_acceleration;
-    const auto &gyr_acc = meas.imu.front()->angular_velocity;
-    mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
-    mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
-    first_lidar_time = meas.lidar_beg_time;
-  }
+void IMUProcessor::imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
+                            int &N) {
+    V3D cur_acc, cur_gyr;
+    if (b_first_frame_) {
+        reset();
+        b_first_frame_ = false;
+        const auto &imu_acc = meas.imu.front()->linear_acceleration;
+        const auto &gyr_acc = meas.imu.front()->angular_velocity;
+        mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
+        mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+        first_lidar_time = meas.lidar_beg_time;
+    }
 
-  for (const auto &imu : meas.imu)
-  {
-    const auto &imu_acc = imu->linear_acceleration;
-    const auto &gyr_acc = imu->angular_velocity;
-    cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
-    cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    for (const auto &imu : meas.imu) {
+        const auto &imu_acc = imu->linear_acceleration;
+        const auto &gyr_acc = imu->angular_velocity;
+        cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
+        cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
 
-    mean_acc += (cur_acc - mean_acc) / N;
-    mean_gyr += (cur_gyr - mean_gyr) / N;
-    cov_acc = cov_acc * (N - 1.0) / N +
-              (cur_acc - mean_acc).cwiseProduct(cur_acc - mean_acc) / (N - 1.0);
-    cov_gyr = cov_gyr * (N - 1.0) / N +
-              (cur_gyr - mean_gyr).cwiseProduct(cur_gyr - mean_gyr) / (N - 1.0);
-    //.cwiseProduct()为对应系数相乘
-    // https://blog.csdn.net/weixin_44479136/article/details/90510374
-    // 均值 & 方差迭代计算公式
-    N++;
-  }
-  state_ikfom init_state = kf_state.get_x();
-  init_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
-  init_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
-  init_state.vel = vect3(V3D(0.0, 0.0, 0.0));
-  init_state.grav = init_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
-  // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
+        mean_acc += (cur_acc - mean_acc) / N;
+        mean_gyr += (cur_gyr - mean_gyr) / N;
+        cov_acc = cov_acc * (N - 1.0) / N + (cur_acc - mean_acc).cwiseProduct(cur_acc - mean_acc) / (N - 1.0);
+        cov_gyr = cov_gyr * (N - 1.0) / N + (cur_gyr - mean_gyr).cwiseProduct(cur_gyr - mean_gyr) / (N - 1.0);
+        //.cwiseProduct()为对应系数相乘
+        // https://blog.csdn.net/weixin_44479136/article/details/90510374
+        // 均值 & 方差迭代计算公式
+        N++;
+    }
+    if (N > MAX_INI_COUNT) {
+        cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
+        imu_need_init_ = false;
 
-  init_state.bg = mean_gyr; // 角速度测量均值作为陀螺仪偏差
-  init_state.offset_T_L_I = Lidar_T_wrt_IMU;
-  init_state.offset_R_L_I = Lidar_R_wrt_IMU;
-  kf_state.change_x(init_state);
+        cov_acc = cov_acc_scale;
+        cov_gyr = cov_gyr_scale;
+        ROS_INFO("IMU Initial Done");
 
-  esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
-  init_P.setIdentity();
-  init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;      // 外参R
-  init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;  // 外参t
-  init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001; // 陀螺仪偏差
-  init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;  // 加速度计偏差
-  init_P(21, 21) = init_P(22, 22) = 0.00001;                 // 重力
-  kf_state.change_P(init_P);
+        V3F initPoseT = V3F::Zero();
+        M3F initPoseR = M3F::Zero();
+        if (estimateGrav) {
+            Eigen::Vector3d grav_vec(0., 0., mean_acc.norm());
+            // Estimate gravity vector - Only approximate if biases have not been pre-calibrated
+            Eigen::Quaterniond grav_q = Eigen::Quaterniond::FromTwoVectors(mean_acc, grav_vec);
+
+            // set gravity aligned orientation
+            initPoseR = grav_q.toRotationMatrix().cast<float>();
+
+            // rpy
+            auto euler = grav_q.toRotationMatrix().eulerAngles(2, 1, 0);
+            double yaw = euler[0] * (180.0 / M_PI);
+            double pitch = euler[1] * (180.0 / M_PI);
+            double roll = euler[2] * (180.0 / M_PI);
+
+            // use alternate representation if the yaw is smaller
+            if (abs(remainder(yaw + 180.0, 360.0)) < abs(yaw)) {
+                yaw = remainder(yaw + 180.0, 360.0);
+                pitch = remainder(180.0 - pitch, 360.0);
+                roll = remainder(roll + 180.0, 360.0);
+            }
+            std::cout << " Estimated initial attitude:" << std::endl;
+            std::cout << "   Roll  [deg]: " << to_string(roll) << std::endl;
+            std::cout << "   Pitch [deg]: " << to_string(pitch) << std::endl;
+            std::cout << "   Yaw   [deg]: " << to_string(yaw) << std::endl;
+            std::cout << std::endl;
+        } else {
+            initPoseR = init_pose_curr.block<3, 3>(0, 0);
+        }
+        initPoseT = init_pose_curr.block<3, 1>(0, 3);
+        set_init_pose(initPoseT, initPoseR);
+    }
+
   last_imu_ = meas.imu.back();
   last_imu_only_ = meas.imu.back();
 }
 
-bool IMUProcessor::init_pose(
-    const MeasureGroup &meas,
-    esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-    PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
-    vector<float> &YAW_RANGE)
-{
-  std::cout << "begin to init pose " << std::endl;
-  if (meas.imu.empty())
-  {
-    std::cout << "no imu meas" << std::endl;
-    return false;
-  };
-  ROS_ASSERT(meas.lidar != nullptr);
+bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
+                             PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree, vector<float> &YAW_RANGE) {
+    std::cout << "begin to init pose " << std::endl;
+    if (imu_need_init_) {
+        /// The very first lidar frame
+        imu_init(meas, kf_state, init_iter_num);
+        return false;
+    }
 
-  double t1 = omp_get_wtime();
-  float error_min = 1000000.0, p_valid_proportion_max = 0.0;
-  M4F prior_with_min_error = M4F::Zero();
-  if (error_min_last > 100 && find_yaw) {
-    M4F prior_with_yaw = init_pose_last;
-    error_min_last = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-    prior_with_min_error = prior_with_yaw;
-    p_valid_proportion_max = p_valid_proportion;
-  } else if (!find_yaw) {
+    double t1 = omp_get_wtime();
+    float error_min = 1000000.0, validP_max = 0.0;
+    M4F prior_with_min_error = M4F::Zero();
+    if (find_yaw) {
+        M4F prior_with_yaw = init_pose_last;
+        std::pair<float, float> result;
+        result = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+        error_min = result.first;
+        validP_max = result.second;
+        prior_with_min_error = prior_with_yaw;
+    } else if (!find_yaw) {
 #ifdef MP_EN
-    omp_set_num_threads(MP_PROC_NUM);
+        omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-    for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]); i++) {
-      float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
-      // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
+        for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]); i++) {
+            float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
+            // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
 
-      float error = 0.0;
-      M4F prior_with_yaw = M4F::Zero();
-      M3F rotation_yaw = M3F::Zero();
-      rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw), std::cos(yaw), 0.0, 0.0, 0.0, 1.0;
-      prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
-      prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * init_pose_last.block<3, 3>(0, 0);
+            float error = 0.0, validP = 0.0;
+            std::pair<float, float> result;
+            M4F prior_with_yaw = M4F::Zero();
+            M3F rotation_yaw = M3F::Zero();
+            rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw), std::cos(yaw), 0.0, 0.0, 0.0,
+                1.0;
+            prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
+            prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * init_pose_last.block<3, 3>(0, 0);
 
-      // if (method == "NDT") {
-      //   error = init_ndt_method(meas.lidar, prior_with_yaw);
-      // }
-      // else if (method == "ICP") {
-      //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
-      // }
-      // else if (method == "PPICP") {
-      error = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-      // }
-      // else
-      // {
-      //   std::cerr << "Not valid method!" << std::endl;
-      //   return false;
-      // }
+            // if (method == "NDT") {
+            //   error = init_ndt_method(meas.lidar, prior_with_yaw);
+            // }
+            // else if (method == "ICP") {
+            //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
+            // }
+            // else if (method == "PPICP") {
+            result = init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+            error = result.first;
+            validP = result.second;
+            // }
+            // else
+            // {
+            //   std::cerr << "Not valid method!" << std::endl;
+            //   return false;
+            // }
 #ifdef MP_EN
 #pragma omp critical
 #endif
-      {
-        if (error < error_min) {
-            error_min = error;
-            prior_with_min_error = prior_with_yaw;
-            p_valid_proportion_max = p_valid_proportion;
+            {
+                if (error < error_min) {
+                    error_min = error;
+                    prior_with_min_error = prior_with_yaw;
+                    validP_max = validP;
+                }
+            }
         }
-      }
-      // if (error_min < 100)
-      // {
-      //   break;
-      // }
+        if (validP_max > 0.8) {
+            find_yaw = true;
+        }
     }
-    find_yaw = true;
-    error_min_last = error_min;
-  }
   init_pose_curr = prior_with_min_error;
-
-  // M3F rotMatrix= init_pose_curr.block<3, 3>(0, 0);
-  // double roll, yaw, pitch;
-  // double sy = sqrt(rotMatrix(0, 0) * rotMatrix(0, 0) + rotMatrix(1, 0) * rotMatrix(1, 0));
-  // bool singular = sy < 1e-6;  // If
-  // if (!singular) {
-  //     int sign = 0;
-  //     roll = atan(rotMatrix(2, 1) / rotMatrix(2, 2));
-  //     yaw = atan(rotMatrix(1, 0) / rotMatrix(0, 0));
-  //     sign = (rotMatrix(2, 1) > 0 && pitch > 0 || rotMatrix(2, 1) < 0 && pitch < 0) ? 1 : -1;
-  //     pitch = atan2(-rotMatrix(2, 0), sign * sy);
-  // } else {
-  //     int sign = 0;
-  //     roll = atan(-rotMatrix(1, 2) / rotMatrix(1, 1));
-  //     yaw = 0;
-  //     sign = (rotMatrix(2, 1) > 0 && pitch > 0 || rotMatrix(2, 1) < 0 && pitch < 0) ? 1 : -1;
-  //     pitch = atan2(-rotMatrix(2, 0), sign * sy);
-  // }
-  // std::cout<<roll*180/PI_M<<" "<<yaw*180/PI_M<<std::endl;
 
   double t2 = omp_get_wtime();
   fout_init << "Init align time cost " << t2 - t1 << "s. " << std::endl
@@ -470,27 +443,32 @@ bool IMUProcessor::init_pose(
 
   V3F delta_rvec, delta_tvec;
   delta_rvec =
-      rotationToEulerAngles(init_pose_curr.block<3, 3>(0, 0) *
-                            init_pose_last.block<3, 3>(0, 0).inverse());
-  delta_tvec =
-      init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
+      rotationToEulerAngles(init_pose_curr.block<3, 3>(0, 0) * init_pose_last.block<3, 3>(0, 0).inverse());
+  delta_tvec = init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
   fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
             << "delta_rvec: " << delta_rvec.norm() << std::endl;
-  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 && init_pose_curr(0, 3) < 30.0 &&
-      init_pose_curr(0, 3) > -2.0 && init_pose_curr(1, 3) < 17.0 && init_pose_curr(1, 3) > -2.0 &&
-      init_pose_curr(2, 3) < 5.0 && init_pose_curr(2, 3) > -2.0 && p_valid_proportion_max > 0.5) {
-    /// The very first lidar frame
-    imu_init(meas, kf_state, init_iter_num);
-    // last_imu_ = meas.imu.back();
-    // last_imu_only_ = meas.imu.back(); imu_init里赋值过了
+  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 && validP_max > 0.9) {
+      state_ikfom imu_state = kf_state.get_x();
+      imu_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
+      imu_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
+      imu_state.vel = vect3(V3D(0.0, 0.0, 0.0));
+      imu_state.grav = imu_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
+      // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
 
-    state_ikfom imu_state = kf_state.get_x();
-    if (init_iter_num > MAX_INI_COUNT)
-    {
-      cov_acc *= pow(G_m_s2 / mean_acc.norm(), 2);
+      imu_state.bg = mean_gyr;  // 角速度测量均值作为陀螺仪偏差
+      imu_state.offset_T_L_I = Lidar_T_wrt_IMU;
+      imu_state.offset_R_L_I = Lidar_R_wrt_IMU;
+      kf_state.change_x(imu_state);
 
-      cov_acc = cov_acc_scale;
-      cov_gyr = cov_gyr_scale;
+      esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
+      init_P.setIdentity();
+      init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;       // 外参R
+      init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;   // 外参t
+      init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;  // 陀螺仪偏差
+      init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;   // 加速度计偏差
+      init_P(21, 21) = init_P(22, 22) = 0.00001;                  // 重力
+      kf_state.change_P(init_P);
+
       ROS_INFO(
           "Initialization Done: pos: %.4f %.4f %.4f"
           "Gravity: %.4f %.4f %.4f %.4f; "
@@ -500,37 +478,26 @@ bool IMUProcessor::init_pose(
           "bias_gyr covariance: %.4f %.4f %.4f; "
           "acc covarience: %.8f %.8f %.8f; "
           "gyr covarience: %.8f %.8f %.8f",
-          imu_state.pos[0], imu_state.pos[1], imu_state.pos[2],
-          imu_state.grav[0], imu_state.grav[1], imu_state.grav[2],
-          mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0],
-          mean_gyr[1], mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1],
-          cov_bias_acc[2], cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2],
-          cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
-          cov_gyr[2]);
-      fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", "
-                << imu_state.pos[1] << ", " << imu_state.pos[2] << std::endl
-                << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", "
-                << imu_state.grav[2] << std::endl
-                << "mean_acc: " << mean_acc[0] << ", "
-                << mean_acc[1] << ", " << mean_acc[2] << std::endl
-                << "mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2] << std::endl
-                << "bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1]
-                << ", " << cov_bias_acc[2] << std::endl
-                << "bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1] << ", " << cov_bias_gyr[2]
+          imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1],
+          imu_state.grav[2], mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0], mean_gyr[1],
+          mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0], cov_bias_gyr[1],
+          cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
+      fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", "
+                << imu_state.pos[2] << std::endl
+                << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", " << imu_state.grav[2]
                 << std::endl
-                << "acc covarience: " << cov_acc[0] << ", " << cov_acc[1]
-                << ", " << cov_acc[2] << std::endl
-                << "gyr covarience: " << cov_gyr[0]
-                << ", " << cov_gyr[1] << ", " << cov_gyr[2] << std::endl;
+                << "mean_acc: " << mean_acc[0] << ", " << mean_acc[1] << ", " << mean_acc[2] << std::endl
+                << "mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2] << std::endl
+                << "bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1] << ", "
+                << cov_bias_acc[2] << std::endl
+                << "bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1] << ", "
+                << cov_bias_gyr[2] << std::endl
+                << "acc covarience: " << cov_acc[0] << ", " << cov_acc[1] << ", " << cov_acc[2] << std::endl
+                << "gyr covarience: " << cov_gyr[0] << ", " << cov_gyr[1] << ", " << cov_gyr[2] << std::endl;
       return true;
-    }
   }
   std::cout << "init pose last change" << std::endl;
   init_pose_last = init_pose_curr;
-  p_valid_proportion_max = 0.0f;
-  p_valid_proportion = 0.0f;
-  p_num = 0.0f;
-  p_valid = 0.0f;
   return false;
 }
 

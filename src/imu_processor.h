@@ -78,16 +78,17 @@ public:
   string method;
   float res, step_size, trans_eps, eculi_eps, plane_dist;
   int max_iter;
+  bool estimateGrav = true;
 
-private:
+ private:
   void imu_init(const MeasureGroup &meas,
                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
 
   float init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose);
-  float init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                        M4F &predict_pose);
-  float init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                          M4F &predict_pose);
+  std::pair<float, float> init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
+                                          M4F &predict_pose);
+  std::pair<float, float> init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
+                                            M4F &predict_pose);
 
   sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
   vector<Pose6D> IMUpose;
@@ -97,21 +98,17 @@ private:
   M3D Lidar_R_wrt_IMU;
   V3D Lidar_T_wrt_IMU;
 
-  float error_min_last;
   bool find_yaw;
   M4F init_pose_curr;
   M4F init_pose_last;
   bool b_first_frame_;
+  bool imu_need_init_;
   V3D mean_acc;
   V3D mean_gyr;
   mutex mtx_error;
 
   int init_iter_num;
   std::ofstream fout_init;
-
-  float p_valid_proportion;
-  float p_num;
-  float p_valid;
 };
 
 
