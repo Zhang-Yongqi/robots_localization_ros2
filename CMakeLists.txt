@@ -65,7 +65,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  # livox_ros_driver
+  livox_ros_driver
   message_generation
   eigen_conversions
 )
@@ -83,21 +83,12 @@ include_directories(
   ${PYTHON_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
   include
-  "/home/cyl/code/ws_localization/devel/include"
-  "/home/hitcrt/文档/cyl/rm2023_sentry_msgs/build/devel/include"
   "src"
   )
 
 add_message_files(
   FILES
   Pose6D.msg
-)
-# add livox lidar custom msgs
-add_message_files(
-  DIRECTORY msg/livox
-  FILES
-  CustomPoint.msg
-  LivoxMsg.msg 
 )
 
 generate_messages(
@@ -119,7 +110,7 @@ add_executable(robots_localization src/robots_localization_node.cpp)
 add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
 add_library(imu_processor SHARED src/imu_processor.cpp)
 add_library(lidar_processor SHARED src/lidar_processor.cpp)
-target_link_libraries(imu_processor fmt)
+target_link_libraries(imu_processor fmt ${catkin_LIBRARIES})
 
 
 # PCH头文件预编译

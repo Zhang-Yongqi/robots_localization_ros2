@@ -12,9 +12,7 @@ LidarProcessor::LidarProcessor() {}
 
 LidarProcessor::~LidarProcessor() {}
 
-void LidarProcessor::process(const robots_localization::LivoxMsg::ConstPtr &msg,
-                             PointCloudXYZI::Ptr &pcl_out)
-{
+void LidarProcessor::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out) {
     avia_handler(msg);
     *pcl_out = pl_surf;
 }
@@ -56,9 +54,7 @@ void LidarProcessor::process(const sensor_msgs::PointCloud2::ConstPtr &msg,
     *pcl_out = pl_surf;
 }
 
-void LidarProcessor::avia_handler(
-    const robots_localization::LivoxMsg::ConstPtr &msg)
-{
+void LidarProcessor::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();

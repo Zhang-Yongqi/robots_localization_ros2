@@ -1,8 +1,7 @@
 #pragma once
 
-// #include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver/CustomMsg.h>
 #include <pcl_conversions/pcl_conversions.h>
-#include <robots_localization/LivoxMsg.h>
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 
@@ -94,8 +93,7 @@ class LidarProcessor {
   LidarProcessor();
   ~LidarProcessor();
 
-  void process(const robots_localization::LivoxMsg::ConstPtr &msg,
-               PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg,
                PointCloudXYZI::Ptr &pcl_out);
 
@@ -110,7 +108,7 @@ class LidarProcessor {
   PointCloudXYZI pl_buff[128];  // maximum 128 line lidar
 
  private:
-  void avia_handler(const robots_localization::LivoxMsg::ConstPtr &msg);
+  void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
 };
