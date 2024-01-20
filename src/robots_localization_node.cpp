@@ -28,8 +28,6 @@
 string root_dir = ROOT_DIR;
 string lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
 
-// int i = 0;
-
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false,
      scan_body_pub_en = false;
@@ -42,7 +40,7 @@ double fov_deg = 0.0, filter_size_corner_min = 0.0, filter_size_surf_min = 0.0,
        filter_size_map_min = 0.0, cube_len = 0.0;
 double last_timestamp_lidar = 0.0, last_timestamp_imu = -1.0,
        last_timestamp_imu_back = -1.0;
-double lidar_end_time = 0.0, lidar_end_time_last = 0.0, first_lidar_time = 0.0;
+double lidar_end_time = 0.0, first_lidar_time = 0.0;
 double total_residual = 0.0, res_mean_last = 0.0;
 float det_range = 300.0f;
 
@@ -95,9 +93,6 @@ KD_TREE<PointType> ikdtree;
 vector<PointVector> Nearest_Points;
 float res_last[100000] = {0.0};
 bool point_selected_surf[100000] = {0};
-
-vector<BoxPointType> cub_needrm;
-int kdtree_delete_counter = 0, add_point_size = 0;
 
 shared_ptr<LidarProcessor> p_lidar(new LidarProcessor());
 shared_ptr<IMUProcessor> p_imu(new IMUProcessor());
@@ -184,49 +179,42 @@ void loadConfig(const ros::NodeHandle &nh)
                           vector<float>(3, 0.0));
   nh.param<vector<float>>("prior/prior_R", priorR,
                           vector<float>(9, 0.0));
+  nh.param<bool>("prior/estimateGrav", p_imu->estimateGrav, true);
 }
 
 double timediff_lidar_wrt_imu = 0.0; // lidar imu 时间差
 bool timediff_set_flg = false;       // 是否已经计算了时间差
 // livox激光雷达回调函数
-void livox_pcl_cbk(const robots_localization::LivoxMsg::ConstPtr &msg)
-{
-  mtx_buffer.lock();
-  scan_count++;
-  if (msg->header.stamp.toSec() < last_timestamp_lidar)
-  {
-    ROS_ERROR("lidar loop back, clear buffer");
-    lidar_buffer.clear();
-  }
-  last_timestamp_lidar = msg->header.stamp.toSec();
+void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
+    mtx_buffer.lock();
+    scan_count++;
+    if (msg->header.stamp.toSec() < last_timestamp_lidar) {
+        ROS_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
+    last_timestamp_lidar = msg->header.stamp.toSec();
 
-  // time_sync_en时间同步关闭，imu和lidar时间差>10，两个buffer都不为空，就输出
-  if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 &&
-      !imu_buffer.empty() && !lidar_buffer.empty())
-  {
-    printf("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf",
-           last_timestamp_imu, last_timestamp_lidar);
-  }
-  // 如果是同一个时间系统，正常情况下不会相差大于1s（不是同一个时间系统）
-  if (time_sync_en && !timediff_set_flg &&
-      abs(last_timestamp_lidar - last_timestamp_imu) > 1 &&
-      !imu_buffer.empty())
-  {
-    timediff_set_flg = true;
-    timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
-    printf("Self sync IMU and LiDAR, time diff is % .10lf ",
-           timediff_lidar_wrt_imu);
-  }
+    // time_sync_en时间同步关闭，imu和lidar时间差>10，两个buffer都不为空，就输出
+    if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 && !imu_buffer.empty() &&
+        !lidar_buffer.empty()) {
+        printf("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf", last_timestamp_imu,
+               last_timestamp_lidar);
+    }
+    // 如果是同一个时间系统，正常情况下不会相差大于1s（不是同一个时间系统）
+    if (time_sync_en && !timediff_set_flg && abs(last_timestamp_lidar - last_timestamp_imu) > 1 &&
+        !imu_buffer.empty()) {
+        timediff_set_flg = true;
+        timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
+        printf("Self sync IMU and LiDAR, time diff is % .10lf ", timediff_lidar_wrt_imu);
+    }
 
-  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-  p_lidar->process(msg, ptr); // 数据格式转换
-  lidar_buffer.push_back(ptr);
-  time_buffer.push_back(last_timestamp_lidar);
+    PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+    p_lidar->process(msg, ptr);  // 数据格式转换
+    lidar_buffer.push_back(ptr);
+    time_buffer.push_back(last_timestamp_lidar);
 
-  mtx_buffer.unlock();
-  process_lidar();
-
-  sig_buffer.notify_all();
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
 }
 
 // 标准雷达回调函数
@@ -247,8 +235,6 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
   last_timestamp_lidar = msg->header.stamp.toSec();
 
   mtx_buffer.unlock();
-  process_lidar();
-
   sig_buffer.notify_all(); // 唤醒所有线程
 }
 
@@ -281,28 +267,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     ROS_WARN("imu loop back, clear buffer");
     imu_buffer.clear();
   }
-  // 限制幅度，fastlio2源代码没有
-  // msg->linear_acceleration.x = std::max(msg->linear_acceleration.x, -10.0);
-  // msg->linear_acceleration.x = std::min(msg->linear_acceleration.x, 10.0);
-  // msg->linear_acceleration.y = std::max(msg->linear_acceleration.y, -10.0);
-  // msg->linear_acceleration.y = std::min(msg->linear_acceleration.y, 10.0);
-  // msg->linear_acceleration.z =
-  //     std::max(msg->linear_acceleration.z - 9.81, -5.0) + 9.81;
-  // msg->linear_acceleration.z =
-  //     std::min(msg->linear_acceleration.z - 9.81, 5.0) + 9.81;
-  // msg->angular_velocity.x = std::max(msg->angular_velocity.x, -1.0);
-  // msg->angular_velocity.x = std::min(msg->angular_velocity.x, 1.0);
-  // msg->angular_velocity.y = std::max(msg->angular_velocity.y, -1.0);
-  // msg->angular_velocity.y = std::min(msg->angular_velocity.y, 1.0);
-  // msg->angular_velocity.z = std::max(msg->angular_velocity.z, -2.0);
-  // msg->angular_velocity.z = std::min(msg->angular_velocity.z, 2.0);
-  // std::cout << "imu data: " << msg->linear_acceleration.x << ", "
-  //           << msg->linear_acceleration.y << ", " <<
-  //           msg->linear_acceleration.z
-  //           << ". " << std::endl
-  //           << msg->angular_velocity.x << ", " << msg->angular_velocity.y
-  //           << ", " << msg->angular_velocity.z << ". " << std::endl
-  //           << std::endl;
   last_timestamp_imu = timestamp;
   imu_buffer.push_back(msg);
   mtx_buffer.unlock();
@@ -332,14 +296,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
       odomAftMappedIMU.pose.pose.orientation.w =
           state_point_imu.rot.coeffs()[3];
 
-      odomIMUBias.twist.linear.x = state_point_imu.ba(0);
-      odomIMUBias.twist.linear.y = state_point_imu.ba(1);
-      odomIMUBias.twist.linear.z = state_point_imu.ba(2);
-      // 利用twist的空位发布bg
-      odomIMUBias.twist.angular.x = state_point_imu.bg(0);
-      odomIMUBias.twist.angular.y = state_point_imu.bg(1);
-      odomIMUBias.twist.angular.z = state_point_imu.bg(2);
-      pubIMUBias.publish(odomIMUBias);
       sub_pub_imu.publish(odomAftMappedIMU);
       // end3 = start3;
       // start3 = ros::Time::now();
@@ -459,7 +415,6 @@ bool sync_packages(MeasureGroup &meas)
   lidar_buffer.pop_front();
   time_buffer.pop_front();
   lidar_pushed = false;
-  lidar_end_time_last = lidar_end_time;
   return true;
 }
 
@@ -484,17 +439,12 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   set_posestamp(odomAftMapped.pose); // 设置位置，欧拉角
 
   ////////////////触发重定位////////////////
-  if (odomAftMapped.pose.pose.position.x > 30.0 ||
-      odomAftMapped.pose.pose.position.x < -2.0 ||
-      odomAftMapped.pose.pose.position.y > 17.0 ||
-      odomAftMapped.pose.pose.position.y < -2.0 ||
-      odomAftMapped.pose.pose.position.z > 5.0 ||
-      odomAftMapped.pose.pose.position.z < -2.0 ||
-      point_valid_proportion < 0.5 || point_not_enough)
-  {
-    need_reloc = true;
-    initT_flag = false;
-    // odomAftMapped.pose.pose.position.z = -100.0;
+  if (point_valid_proportion < 0.3 || point_not_enough) {
+      need_reloc = true;
+      initT_flag = false;
+  } else {
+      need_reloc = false;
+      initT_flag = false;
   }
 
   odomAftMapped.twist.twist.linear.x = state_point.vel(0);
@@ -526,6 +476,15 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   transform.setRotation(q);
   br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp,
                                         "camera_init", "body"));
+
+  odomIMUBias.twist.linear.x = state_point.ba(0);
+  odomIMUBias.twist.linear.y = state_point.ba(1);
+  odomIMUBias.twist.linear.z = state_point.ba(2);
+  // 利用twist的空位发布bg
+  odomIMUBias.twist.angular.x = state_point.bg(0);
+  odomIMUBias.twist.angular.y = state_point.bg(1);
+  odomIMUBias.twist.angular.z = state_point.bg(2);
+  pubIMUBias.publish(odomIMUBias);
 
   if (runtime_pos_log)
   {
@@ -715,13 +674,10 @@ void h_share_model(state_ikfom &s,
     }
   }
   point_valid_proportion = point_valid_num / point_num;
-  if (point_num < 1000)
-  {
-    point_not_enough = true;
-  }
-  else
-  {
-    point_not_enough = false;
+  if (point_valid_num < 100) {
+      point_not_enough = true;
+  } else {
+      point_not_enough = false;
   }
 
   // 根据point_selected_surf状态判断哪些点是可用的
@@ -791,41 +747,40 @@ void h_share_model(state_ikfom &s,
   }
 }
 
-// bool isinit=false; // 无串口时调试用
+void process_lidarThread() {
+    ros::Rate rate(5000);
+    while (ros::ok()) {
+        if (flg_exit) {
+            break;
+        }
+        process_lidar();
+        rate.sleep();
+    }
+}
 
+// bool isinit = false;  // 无串口时调试用
 /**
  * 雷达处理回调函数
  */
 void process_lidar()
 {
-  
-  // 无串口时调试用
-  // if(isinit==false)
-  // {
-  //   mode_changed=true;
-  //   isinit=true;
-  // }
+      // 无串口时调试用
+    // if (isinit == false) {
+    //     mode_changed = true;
+    //     isinit = true;
+    // }
 
-  // ros::Rate loop_rate(30);
-  // while (ros::ok())
-  // {
-  if (mode_changed)
-  {
-    if (mode_status)
-    {
-      p_imu->set_init_pose(blue_prior_T,prior_R);
-      std::cout << "init with blue" << std::endl
-                << std::endl;
+    if (mode_changed) {
+        if (mode_status) {
+            p_imu->set_init_pose(blue_prior_T, prior_R);
+            std::cout << "init with blue" << std::endl << std::endl;
+        } else {
+            p_imu->set_init_pose(red_prior_T, prior_R);
+            std::cout << "init with red" << std::endl << std::endl;
+        }
+        mode_changed = false;
+        pose_inited = true;
     }
-    else
-    {
-      p_imu->set_init_pose(red_prior_T,prior_R);
-      std::cout << "init with red" << std::endl
-                << std::endl;
-    }
-    mode_changed = false;
-    pose_inited = true;
-  }
 
   if (!pose_inited)
   {
@@ -843,6 +798,12 @@ void process_lidar()
       flg_first_scan = false;
       return;
     }
+
+    if (Measures.imu.empty()) {
+        std::cout << "no imu meas" << std::endl;
+        return;
+    }
+    ROS_ASSERT(Measures.lidar != nullptr);
 
     // 初始化位姿
     if (!initialized)
@@ -932,8 +893,6 @@ void process_lidar()
       publish_frame_world_local(pubLaserCloudFull_world);
     }
   }
-  // loop_rate.sleep();
-  // }
 }
 
 int main(int argc, char **argv)
@@ -1013,13 +972,7 @@ int main(int argc, char **argv)
 
   signal(SIGINT, SigHandle);
 
-  // ros::CallbackQueue timer_queue; // 用于定时器回调的回调队列对象
-  // ros::CallbackQueue task_queue;
-
-  // ros::SubscribeOptions imu_ops =
-  // ros::SubscribeOptions::create<sensor_msgs::Imu::ConstPtr>(imu_topic,
-  // 200000, imu_cbk, ros::VoidPtr(), &task_queue); ros::Subscriber sub_imu =
-  // nh.subscribe(imu_ops);
+  std::thread processThread(&process_lidarThread);
 
   ros::Subscriber sub_pcl = p_lidar->lidar_type == AVIA
                                 ? nh.subscribe(lid_topic, 2, livox_pcl_cbk)
@@ -1029,29 +982,11 @@ int main(int argc, char **argv)
   ros::Subscriber sub_mode = nh.subscribe(mode_topic, 200000, mode_cbk);
 
   // ros::Subscriber sub_wheel = nh.subscribe(wheel_topic, 200000, wheel_cbk);
-  // ros::Timer timer = nh.createTimer(ros::Duration(0.02), process_lidar);
 
   ros::MultiThreadedSpinner spinner(
       2);  // 启用x个spinner线程订阅话题，后续可以看看异步的AsyncSpinner以及为每个subscriber指定callback队列效果会不会好些
+
   spinner.spin();
-
-  // std::thread t(process_lidar);
-
-  // ros::spin();
-  // t.join();
-
-  // boost::thread
-
-  // ros::Rate rate(200);
-  // bool status = ros::ok();
-
-  // while (status) {
-  //   if (flg_exit) break;
-  //   ros::spinOnce();
-
-  //   status = ros::ok();
-  //   rate.sleep();
-  // }
 
   return 0;
 }

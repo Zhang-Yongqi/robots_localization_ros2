@@ -17,4 +17,5 @@ ros::Time start3;
 ros::Time end3;
 ros::Duration duration3;
 
+void process_lidarThread();
 void process_lidar();
