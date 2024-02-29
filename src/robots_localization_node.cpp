@@ -5,6 +5,7 @@
 #include <nav_msgs/Path.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
+#include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <unistd.h>
 
@@ -17,13 +18,29 @@
 #include <thread>
 
 #include "imu_processor.h"
-#include "init.h"
 #include "lidar_processor.h"
 
 #define LASER_POINT_COV (0.001)
 #define PUBFRAME_PERIOD (20)
 #define DET_RANGE (300.0f)
 #define MOV_THRESHOLD (1.5f)
+
+ros::Publisher pubLaserCloudFull;
+ros::Publisher pubLaserCloudFull_body;
+ros::Publisher pubLaserCloudFull_world;
+ros::Publisher pubLaserCloudMap;
+ros::Publisher pubOdomAftMapped;
+ros::Publisher pubPath;
+ros::Publisher pubIMUBias;
+ros::Time start_time;
+ros::Time end_time;
+ros::Duration duration_time;
+ros::Time start2;
+ros::Time end2;
+ros::Duration duration2;
+ros::Time start3;
+ros::Time end3;
+ros::Duration duration3;
 
 string root_dir = ROOT_DIR;
 string lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
@@ -747,24 +764,9 @@ void h_share_model(state_ikfom &s,
   }
 }
 
-void process_lidarThread() {
-    ros::Rate rate(5000);
-    while (ros::ok()) {
-        if (flg_exit) {
-            break;
-        }
-        process_lidar();
-        rate.sleep();
-    }
-}
-
 // bool isinit = false;  // 无串口时调试用
-/**
- * 雷达处理回调函数
- */
-void process_lidar()
-{
-      // 无串口时调试用
+void mainProcess() {
+    // // 无串口时调试用
     // if (isinit == false) {
     //     mode_changed = true;
     //     isinit = true;
@@ -782,117 +784,116 @@ void process_lidar()
         pose_inited = true;
     }
 
-  if (!pose_inited)
-  {
-    std::cout << "slaver received nothing, init failed" << std::endl;
-    return;
-  }
-
-  if (sync_packages(Measures))  // 在Measure内，储存当前lidar数据及lidar扫描时间内对应的imu数据序列
-  {
-    ros::Time start = ros::Time::now();
-    if (flg_first_scan)  // 第一帧lidar数据
-    {
-      first_lidar_time = Measures.lidar_beg_time;
-      p_imu->first_lidar_time = first_lidar_time;  // 记录第一帧绝对时间
-      flg_first_scan = false;
-      return;
-    }
-
-    if (Measures.imu.empty()) {
-        std::cout << "no imu meas" << std::endl;
+    if (!pose_inited) {
+        std::cout << "slaver received nothing, init failed" << std::endl;
         return;
     }
-    ROS_ASSERT(Measures.lidar != nullptr);
 
-    // 初始化位姿
-    if (!initialized)
+    if (sync_packages(Measures))  // 在Measure内，储存当前lidar数据及lidar扫描时间内对应的imu数据序列
     {
-      initialized =
-          p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
-      return;
-    }
-
-    // 重定位
-    if (need_reloc)
-    {
-      std::cout << "!!!!!!!!!need relocalization!!!!!!!!!" << std::endl;
-      if (reloc_initT.norm() > 0.01)
-      {
-        std::cout << "reloc_initT: " << reloc_initT << std::endl;
-        if (!initT_flag)
+        ros::Time start = ros::Time::now();
+        if (flg_first_scan)  // 第一帧lidar数据
         {
-          p_imu->reset();
-          p_imu->set_init_pose(reloc_initT,prior_R);
-          p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-          p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-          p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-          p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-          p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-          initT_flag = true;
+            first_lidar_time = Measures.lidar_beg_time;
+            p_imu->first_lidar_time = first_lidar_time;  // 记录第一帧绝对时间
+            flg_first_scan = false;
+            return;
         }
-        if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE))
-        {
-          need_reloc = false;
-          reloc_initT = V3F(0.0, 0.0, 0.0);
+
+        if (Measures.imu.empty()) {
+            std::cout << "no imu meas" << std::endl;
+            return;
         }
-        return;
-      }
-    }
+        ROS_ASSERT(Measures.lidar != nullptr);
 
-    // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理
-    // feats_undistort 为畸变纠正之后的点云,lidar系
-    p_imu->process(Measures, kf, *feats_undistort);
-    state_point = kf.get_x();  // 前向传播后body的状态预测值
-    pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-    if (feats_undistort->empty() || (feats_undistort == NULL))
-    {
-      ROS_WARN("No point, skip this scan!\n");
-      return;
-    }
+        // 初始化位姿
+        if (!initialized) {
+            initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+            return;
+        }
 
-    /*** downsample the feature points in a scan ***/
-    downSizeFilterSurf.setInputCloud(feats_undistort);
-    downSizeFilterSurf.filter(*feats_down_body); // 降采样
-    feats_down_size = feats_down_body->points.size();
-    if (feats_down_size < 5)
-    {
-      ROS_WARN("No point, skip this scan!\n");
-      return;
-    }
+        // 重定位
+        if (need_reloc) {
+            std::cout << "!!!!!!!!!need relocalization!!!!!!!!!" << std::endl;
+            if (reloc_initT.norm() > 0.01) {
+                std::cout << "reloc_initT: " << reloc_initT << std::endl;
+                if (!initT_flag) {
+                    p_imu->reset();
+                    p_imu->set_init_pose(reloc_initT, prior_R);
+                    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+                    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+                    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+                    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+                    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+                    initT_flag = true;
+                }
+                if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
+                    need_reloc = false;
+                    reloc_initT = V3F(0.0, 0.0, 0.0);
+                }
+                return;
+            }
+        }
 
-    /*** iterated state estimation ***/
-    normvec->resize(feats_down_size);
-    feats_down_world->resize(feats_down_size);
-    Nearest_Points.resize(feats_down_size);
-    // 迭代扩展卡尔曼滤波更新
-    double solve_H_time = 0.0;
-    kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);  // 预测、更新
-    state_point = kf.get_x();
-    pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
-    geoQuat.x = state_point.rot.coeffs()[0];
-    geoQuat.y = state_point.rot.coeffs()[1];
-    geoQuat.z = state_point.rot.coeffs()[2];
-    geoQuat.w = state_point.rot.coeffs()[3];
-    kf.change_x_imu();
+        // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理
+        // feats_undistort 为畸变纠正之后的点云,lidar系
+        p_imu->process(Measures, kf, *feats_undistort);
+        state_point = kf.get_x();  // 前向传播后body的状态预测值
+        pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+        if (feats_undistort->empty() || (feats_undistort == NULL)) {
+            ROS_WARN("No point, skip this scan!\n");
+            return;
+        }
 
-    /******* Publish odometry *******/
-    publish_odometry(pubOdomAftMapped);
+        /*** downsample the feature points in a scan ***/
+        downSizeFilterSurf.setInputCloud(feats_undistort);
+        downSizeFilterSurf.filter(*feats_down_body);  // 降采样
+        feats_down_size = feats_down_body->points.size();
+        if (feats_down_size < 5) {
+            ROS_WARN("No point, skip this scan!\n");
+            return;
+        }
 
-    /******* Publish points *******/
-    if (path_en)
-      publish_path(pubPath);
-    if (scan_pub_en && first_pub)
-    {
-      publish_frame_world(pubLaserCloudFull);
-      first_pub = false;
+        /*** iterated state estimation ***/
+        normvec->resize(feats_down_size);
+        feats_down_world->resize(feats_down_size);
+        Nearest_Points.resize(feats_down_size);
+        // 迭代扩展卡尔曼滤波更新
+        double solve_H_time = 0.0;
+        kf.update_iterated_dyn_share_modified(LASER_POINT_COV, solve_H_time);  // 预测、更新
+        state_point = kf.get_x();
+        pos_lid = state_point.pos + state_point.rot * state_point.offset_T_L_I;
+        geoQuat.x = state_point.rot.coeffs()[0];
+        geoQuat.y = state_point.rot.coeffs()[1];
+        geoQuat.z = state_point.rot.coeffs()[2];
+        geoQuat.w = state_point.rot.coeffs()[3];
+        kf.change_x_imu();
+
+        /******* Publish odometry *******/
+        publish_odometry(pubOdomAftMapped);
+
+        /******* Publish points *******/
+        if (path_en) publish_path(pubPath);
+        if (scan_pub_en && first_pub) {
+            publish_frame_world(pubLaserCloudFull);
+            first_pub = false;
+        }
+        if (scan_pub_en && scan_body_pub_en) {
+            publish_frame_body(pubLaserCloudFull_body);
+            publish_frame_world_local(pubLaserCloudFull_world);
+        }
     }
-    if (scan_pub_en && scan_body_pub_en)
-    {
-      publish_frame_body(pubLaserCloudFull_body);
-      publish_frame_world_local(pubLaserCloudFull_world);
+}
+
+void mainProcessThread() {
+    ros::Rate rate(5000);
+    while (ros::ok()) {
+        if (flg_exit) {
+            break;
+        }
+        mainProcess();
+        rate.sleep();
     }
-  }
 }
 
 int main(int argc, char **argv)
@@ -972,7 +973,7 @@ int main(int argc, char **argv)
 
   signal(SIGINT, SigHandle);
 
-  std::thread processThread(&process_lidarThread);
+  std::thread mainThread(&mainProcessThread);
 
   ros::Subscriber sub_pcl = p_lidar->lidar_type == AVIA
                                 ? nh.subscribe(lid_topic, 2, livox_pcl_cbk)
