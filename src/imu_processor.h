@@ -92,7 +92,7 @@ public:
 
   sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
   vector<Pose6D> IMUpose;
-  V3D acc_s_last, angvel_last, acc_s_last_only, angvel_last_only;
+  V3D acc_s_last, angvel_last;
   double last_lidar_end_time_;
 
   M3D Lidar_R_wrt_IMU;
@@ -105,7 +105,6 @@ public:
   bool imu_need_init_;
   V3D mean_acc;
   V3D mean_gyr;
-  mutex mtx_error;
 
   int init_iter_num;
   std::ofstream fout_init;

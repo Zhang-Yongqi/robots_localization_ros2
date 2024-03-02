@@ -6,12 +6,6 @@
 using namespace common_lib;
 using namespace ikd_Tree;
 
-const bool
-time_list(PointType &x, PointType &y)
-{
-  return (x.curvature < y.curvature);
-};
-
 IMUProcessor::IMUProcessor() : b_first_frame_(true)
 {
   cov_acc = V3D(0.1, 0.1, 0.1);
@@ -217,15 +211,6 @@ std::pair<float, float> IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtr
             esti_plane(abcd, points_near, plane_dist);
             float error_dist =
                 abcd[0] * trans_point.x + abcd[1] * trans_point.y + abcd[2] * trans_point.z + abcd[3];
-            if (error_dist < 0.0) {
-                mtx_error.lock();
-                whole_dist += -error_dist;
-                mtx_error.unlock();
-            } else {
-                mtx_error.lock();
-                whole_dist += error_dist;
-                mtx_error.unlock();
-            }
 
             Eigen::Matrix<float, 1, 6> J(Eigen::Matrix<float, 1, 6>::Zero());
             J.block<1, 3>(0, 0) << abcd[0], abcd[1], abcd[2];
@@ -234,9 +219,18 @@ std::pair<float, float> IMUProcessor::init_ppicp_method(KD_TREE<PointType> &kdtr
             J.block<1, 3>(0, 3) << abcd[0] * tmp(0, 0) + abcd[1] * tmp(1, 0) + abcd[2] * tmp(2, 0),
                 abcd[0] * tmp(0, 1) + abcd[1] * tmp(1, 1) + abcd[2] * tmp(2, 1),
                 abcd[0] * tmp(0, 2) + abcd[1] * tmp(1, 2) + abcd[2] * tmp(2, 2);
-
-            H += J.transpose() * J;
-            b += -J.transpose() * error_dist;
+#ifdef MP_EN
+#pragma omp critical
+#endif
+            {
+                if (error_dist < 0.0) {
+                    whole_dist += -error_dist;
+                } else {
+                    whole_dist += error_dist;
+                }
+                H += J.transpose() * J;
+                b += -J.transpose() * error_dist;
+            }
         }
 
         Eigen::Matrix<float, 6, 1> delta_x = H.ldlt().solve(b);
@@ -359,6 +353,9 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
         imu_init(meas, kf_state, init_iter_num);
         return false;
     }
+
+    last_imu_ = meas.imu.back();
+    last_imu_only_ = meas.imu.back();
 
     double t1 = omp_get_wtime();
     float error_min = 1000000.0, validP_max = 0.0;
@@ -524,9 +521,7 @@ void IMUProcessor::process(
   const double &pcl_beg_time = meas.lidar_beg_time;
   const double &pcl_end_time = meas.lidar_end_time;
 
-  /*** sort point clouds by offset time ***/
   pcl_out = *(meas.lidar);
-  sort(pcl_out.points.begin(), pcl_out.points.end(), time_list);
   // cout << "[IMU Process]:Process " << pcl_out.size() << " lidar points from
   // "
   //      << pcl_beg_time << " to " << pcl_end_time << ", " << meas.imu.size()
@@ -733,13 +728,6 @@ bool IMUProcessor::process_imu_only(
 
   /* save the poses at each IMU measurements */
   imu_state = kf_state.get_x_imu();
-  angvel_last_only = angvel_avr - imu_state.bg;
-  acc_s_last_only = imu_state.rot * (acc_avr - imu_state.ba);
-  for (int i = 0; i < 3; i++)
-  {
-    acc_s_last_only[i] += imu_state.grav[i];
-  }
-
   last_imu_only_ = imu_data;
 
   return true;
