@@ -65,7 +65,7 @@ int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0;
 int feats_down_size = 0;
 
-bool need_reloc = false, point_not_enough = false, initT_flag = true;
+bool need_reloc = false, imu_only_ready = false, point_not_enough = false, initT_flag = true;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT(Zero3f);
 
@@ -123,6 +123,8 @@ geometry_msgs::TwistStamped odomIMUBias;  // 用来传IMU的偏置
 
 std::ofstream fout_pose;
 ros::Publisher sub_pub_imu;
+
+const bool time_list(PointType &x, PointType &y) { return (x.curvature < y.curvature); };
 
 void SigHandle(int sig)
 {
@@ -289,38 +291,32 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
   mtx_buffer.unlock();
   sig_buffer.notify_all();
 
-  if (initialized && last_timestamp_imu > 0.0 &&
-      last_timestamp_imu > last_timestamp_imu_back)
-  {
-    if (p_imu->process_imu_only(msg, kf))
-    {
-      state_point_imu = kf.get_x_imu();
-      odomAftMappedIMU.header.frame_id = "camera_init";
-      odomAftMappedIMU.child_frame_id = "body";
-      odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
-      odomAftMappedIMU.pose.pose.position.x = state_point_imu.pos(0);
-      odomAftMappedIMU.pose.pose.position.y = state_point_imu.pos(1);
-      odomAftMappedIMU.pose.pose.position.z = state_point_imu.pos(2);
-      odomAftMappedIMU.twist.twist.linear.x = state_point_imu.vel(0);
-      odomAftMappedIMU.twist.twist.linear.y = state_point_imu.vel(1);
-      odomAftMappedIMU.twist.twist.linear.z = state_point_imu.vel(2);
-      odomAftMappedIMU.pose.pose.orientation.x =
-          state_point_imu.rot.coeffs()[0];
-      odomAftMappedIMU.pose.pose.orientation.y =
-          state_point_imu.rot.coeffs()[1];
-      odomAftMappedIMU.pose.pose.orientation.z =
-          state_point_imu.rot.coeffs()[2];
-      odomAftMappedIMU.pose.pose.orientation.w =
-          state_point_imu.rot.coeffs()[3];
+  if (initialized && !need_reloc && imu_only_ready && last_timestamp_imu > 0.0 &&
+      last_timestamp_imu > last_timestamp_imu_back) {
+      if (p_imu->process_imu_only(msg, kf)) {
+          state_point_imu = kf.get_x_imu();
+          odomAftMappedIMU.header.frame_id = "camera_init";
+          odomAftMappedIMU.child_frame_id = "body";
+          odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
+          odomAftMappedIMU.pose.pose.position.x = state_point_imu.pos(0);
+          odomAftMappedIMU.pose.pose.position.y = state_point_imu.pos(1);
+          odomAftMappedIMU.pose.pose.position.z = state_point_imu.pos(2);
+          odomAftMappedIMU.twist.twist.linear.x = state_point_imu.vel(0);
+          odomAftMappedIMU.twist.twist.linear.y = state_point_imu.vel(1);
+          odomAftMappedIMU.twist.twist.linear.z = state_point_imu.vel(2);
+          odomAftMappedIMU.pose.pose.orientation.x = state_point_imu.rot.coeffs()[0];
+          odomAftMappedIMU.pose.pose.orientation.y = state_point_imu.rot.coeffs()[1];
+          odomAftMappedIMU.pose.pose.orientation.z = state_point_imu.rot.coeffs()[2];
+          odomAftMappedIMU.pose.pose.orientation.w = state_point_imu.rot.coeffs()[3];
 
-      sub_pub_imu.publish(odomAftMappedIMU);
-      // end3 = start3;
-      // start3 = ros::Time::now();
-      // duration3 = start3 - end3;
-      // ROS_INFO("imu publish spin time is %f", duration3.toSec() * 1000);
+          sub_pub_imu.publish(odomAftMappedIMU);
+          // end3 = start3;
+          // start3 = ros::Time::now();
+          // duration3 = start3 - end3;
+          // ROS_INFO("imu publish spin time is %f", duration3.toSec() * 1000);
 
-      last_timestamp_imu_back = last_timestamp_imu;
-    }
+          last_timestamp_imu_back = last_timestamp_imu;
+      }
   }
 
   // end2 = ros::Time::now();
@@ -359,8 +355,6 @@ void mode_cbk(const RobotStatus::ConstPtr &msg_in)
   }
 }
 
-double lidar_mean_scantime = 0.0; // 雷达扫描一帧平均时间
-int scan_num = 0;                 // 激光雷达帧数
 // 将两帧激光雷达点云数据时间内的IMU数据从缓存队列中取出，进行时间对齐，并保存到meas中
 // 输入数据：lidar_buffer, imu_buffer
 // 输出数据：MeasureGroup
@@ -376,30 +370,21 @@ bool sync_packages(MeasureGroup &meas)
   if (!lidar_pushed)
   {
     meas.lidar = lidar_buffer.front();          // lidar指针指向最旧的lidar数据
+
+    if (meas.lidar->points.size() < 1) {
+        cout << "lose lidar" << endl;
+        lidar_buffer.pop_front();
+        time_buffer.pop_front();
+        return false;
+    }
+
     meas.lidar_beg_time = time_buffer.front();  // 记录最早时间
     // 更新结束时刻的时间
-    if (meas.lidar->points.size() <= 1)
-    { // time too little
-      lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
-      ROS_WARN("Too few input point cloud!\n");
-    }
-    else if (meas.lidar->points.back().curvature / double(1000) <
-             0.5 * lidar_mean_scantime)
-    {
-      // use curvature as time of each laser points, curvature unit: ms
-      lidar_end_time = meas.lidar_beg_time + lidar_mean_scantime;
-    }
-    else
-    { // 这里就是正常的，scan_num++
-      scan_num++;
-      lidar_end_time = meas.lidar_beg_time +
-                       meas.lidar->points.back().curvature / double(1000);
-      // 动态更新每帧lidar数据平均扫描时间
-      lidar_mean_scantime +=
-          (meas.lidar->points.back().curvature / double(1000) -
-           lidar_mean_scantime) /
-          scan_num;
-    }
+
+    /*** sort point clouds by offset time ***/
+    sort(meas.lidar.points.begin(), meas.lidar.points.end(), time_list);
+    lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
+
     meas.lidar_end_time = lidar_end_time;
 
     lidar_pushed = true;
@@ -415,6 +400,11 @@ bool sync_packages(MeasureGroup &meas)
   double imu_time = imu_buffer.front()->header.stamp.toSec();  // 最旧IMU时间
   meas.imu.clear();
 
+  while (imu_time < last_timestamp_lidar)
+  {
+      imu_buffer.pop_front();
+  }
+
   while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))  // 记录imu数据，imu时间小于当前帧lidar结束时间
   {
     imu_time = imu_buffer.front()->header.stamp.toSec();
@@ -422,10 +412,6 @@ bool sync_packages(MeasureGroup &meas)
       break;
     meas.imu.push_back(imu_buffer.front());  // 记录当前lidar帧内的imu数据到meas.imu
     imu_buffer.pop_front();
-  }
-  while (meas.imu.size() > 30)  // 限制积分时间
-  {
-    meas.imu.pop_front();
   }
   // std::cout << "meas.imu.size:    " << meas.imu.size() << std::endl;
 
@@ -456,12 +442,12 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   set_posestamp(odomAftMapped.pose); // 设置位置，欧拉角
 
   ////////////////触发重定位////////////////
-  if (point_valid_proportion < 0.3 || point_not_enough) {
+  if (point_valid_proportion < 0.2 || point_not_enough) {
       need_reloc = true;
       initT_flag = false;
   } else {
       need_reloc = false;
-      initT_flag = false;
+      initT_flag = true;
   }
 
   odomAftMapped.twist.twist.linear.x = state_point.vel(0);
@@ -818,6 +804,7 @@ void mainProcess() {
             if (reloc_initT.norm() > 0.01) {
                 std::cout << "reloc_initT: " << reloc_initT << std::endl;
                 if (!initT_flag) {
+                    imu_only_ready = false;
                     p_imu->reset();
                     p_imu->set_init_pose(reloc_initT, prior_R);
                     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
@@ -868,6 +855,7 @@ void mainProcess() {
         geoQuat.z = state_point.rot.coeffs()[2];
         geoQuat.w = state_point.rot.coeffs()[3];
         kf.change_x_imu();
+        imu_only_ready = true;
 
         /******* Publish odometry *******/
         publish_odometry(pubOdomAftMapped);
