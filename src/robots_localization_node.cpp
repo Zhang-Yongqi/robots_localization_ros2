@@ -400,18 +400,19 @@ bool sync_packages(MeasureGroup &meas)
   double imu_time = imu_buffer.front()->header.stamp.toSec();  // 最旧IMU时间
   meas.imu.clear();
 
-  while (imu_time < last_timestamp_lidar)
-  {
-      imu_buffer.pop_front();
-  }
-
   while ((!imu_buffer.empty()) && (imu_time < lidar_end_time))  // 记录imu数据，imu时间小于当前帧lidar结束时间
   {
-    imu_time = imu_buffer.front()->header.stamp.toSec();
-    if (imu_time > lidar_end_time)
-      break;
-    meas.imu.push_back(imu_buffer.front());  // 记录当前lidar帧内的imu数据到meas.imu
-    imu_buffer.pop_front();
+      imu_time = imu_buffer.front()->header.stamp.toSec();
+      if (imu_time <
+              meas.lidar_beg_time - meas.lidar->points.back().curvature / double(1000);) {  // 舍弃过老imu数据
+          imu_buffer.pop_front();
+          continue;
+      }
+      if (imu_time > lidar_end_time) {
+          break;
+      }
+      meas.imu.push_back(imu_buffer.front());  // 记录当前lidar帧内的imu数据到meas.imu
+      imu_buffer.pop_front();
   }
   // std::cout << "meas.imu.size:    " << meas.imu.size() << std::endl;
 
