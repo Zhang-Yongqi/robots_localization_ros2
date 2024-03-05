@@ -382,7 +382,7 @@ bool sync_packages(MeasureGroup &meas)
     // 更新结束时刻的时间
 
     /*** sort point clouds by offset time ***/
-    sort(meas.lidar.points.begin(), meas.lidar.points.end(), time_list);
+    sort(meas.lidar->points.begin(), meas.lidar->points.end(), time_list);
     lidar_end_time = meas.lidar_beg_time + meas.lidar->points.back().curvature / double(1000);
 
     meas.lidar_end_time = lidar_end_time;
@@ -404,7 +404,7 @@ bool sync_packages(MeasureGroup &meas)
   {
       imu_time = imu_buffer.front()->header.stamp.toSec();
       if (imu_time <
-              meas.lidar_beg_time - meas.lidar->points.back().curvature / double(1000);) {  // 舍弃过老imu数据
+          meas.lidar_beg_time - meas.lidar->points.back().curvature / double(1000)) {  // 舍弃过老imu数据
           imu_buffer.pop_front();
           continue;
       }

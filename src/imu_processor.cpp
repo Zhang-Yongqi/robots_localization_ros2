@@ -413,7 +413,7 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
                 }
             }
         }
-        if (validP_max > 0.8) {
+        if (validP_max > 0.5) {  // TODO 重新建图后提高
             find_yaw = true;
         }
     }
