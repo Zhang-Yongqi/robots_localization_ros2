@@ -83,6 +83,7 @@ include_directories(
   ${PYTHON_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
   include
+  "usr/local/include/fmt"
   "src"
   )
 
