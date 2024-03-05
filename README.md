@@ -50,6 +50,10 @@ RoboMaster2023 哨兵定位代码，基于FAST LIO 2进行开发
     cd livox_ros_driver2
     ./build.sh ROS1
     ```
+    
+    ```bash
+    sudo apt install ccache
+    ```
 
 ## Tips
 
