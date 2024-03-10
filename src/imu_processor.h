@@ -17,6 +17,7 @@
 #include <sophus/so3.hpp>
 
 #include "ikd-Tree/ikd_Tree.h"
+#include "scan_aligner.h"
 #include "use-ikfom.h"
 
 #define MAX_INI_COUNT (10)
@@ -76,19 +77,11 @@ public:
   double first_lidar_time;
 
   string method;
-  float res, step_size, trans_eps, eculi_eps, plane_dist;
-  int max_iter;
   bool estimateGrav = true;
 
  private:
   void imu_init(const MeasureGroup &meas,
                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
-
-  float init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose);
-  std::pair<float, float> init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                                          M4F &predict_pose);
-  std::pair<float, float> init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
-                                            M4F &predict_pose);
 
   sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
   vector<Pose6D> IMUpose;

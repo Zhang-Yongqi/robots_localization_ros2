@@ -19,6 +19,7 @@
 
 #include "imu_processor.h"
 #include "lidar_processor.h"
+#include "scan_aligner.h"
 
 #define LASER_POINT_COV (0.001)
 #define PUBFRAME_PERIOD (20)
@@ -181,16 +182,14 @@ void loadConfig(const ros::NodeHandle &nh)
   }
   else if (p_imu->method == "ICP")
   {
-    nh.param<int>("ICP/max_iter", p_imu->max_iter, 10);
-  }
-  else if (p_imu->method == "PPICP")
-  {
-    nh.param<float>("PPICP/plane_dist", p_imu->plane_dist, 0.1);
-    nh.param<int>("PPICP/max_iter", p_imu->max_iter, 10);
-  }
-  else
-  {
-    std::cerr << "Not valid init method!" << std::endl;
+      nh.param<int>("ICP/max_iter", ScanAligner::max_iter, 10);
+  } else if (p_imu->method == "PPICP") {
+      nh.param<float>("PPICP/plane_dist", ScanAligner::plane_dist, 0.1);
+      nh.param<int>("PPICP/max_iter", ScanAligner::max_iter, 10);
+  } else if (p_imu->method == "GICP") {
+      nh.param<int>("GICP/max_iter", ScanAligner::max_iter, 64);
+  } else {
+      std::cerr << "Not valid init method!" << std::endl;
   }
   nh.param<vector<float>>("prior/red_prior_T", red_priorT,
                           vector<float>(3, 0.0));
@@ -404,7 +403,8 @@ bool sync_packages(MeasureGroup &meas)
   {
       imu_time = imu_buffer.front()->header.stamp.toSec();
       if (imu_time <
-          meas.lidar_beg_time - meas.lidar->points.back().curvature / double(1000)) {  // 舍弃过老imu数据
+          meas.lidar_beg_time - (meas.lidar->points.front().curvature + meas.lidar->points.back().curvature) /
+                                    double(1000)) {  // 舍弃过老imu数据
           imu_buffer.pop_front();
           continue;
       }

@@ -109,13 +109,16 @@ add_subdirectory(src)
 
 add_executable(robots_localization src/robots_localization_node.cpp)
 add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
+add_library(scan_aligner SHARED src/scan_aligner.cpp)
 add_library(imu_processor SHARED src/imu_processor.cpp)
 add_library(lidar_processor SHARED src/lidar_processor.cpp)
 target_link_libraries(imu_processor fmt ${catkin_LIBRARIES})
+target_link_libraries(scan_aligner fmt ${catkin_LIBRARIES})
 
 
 # PCH头文件预编译
 target_precompile_headers(robots_localization PUBLIC
+src/scan_aligner.h
 src/imu_processor.h
 src/lidar_processor.h
 include/common_lib.h
@@ -138,6 +141,7 @@ target_include_directories(robots_localization PRIVATE ${PYTHON_INCLUDE_DIRS})
 target_link_libraries(robots_localization 
 ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} fmt
 ikd_Tree
+scan_aligner
 imu_processor
 lidar_processor
 monitor
