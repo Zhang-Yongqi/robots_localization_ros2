@@ -14,7 +14,8 @@ preprocess:
     blind: 0.7
     point_filter_num: 1
 
-mapping:
+mapping: # 建图和定位参数
+    mapping_en: false # 是否开启建图功能
     acc_cov: 0.1
     gyr_cov: 0.1
     b_acc_cov: 0.0001
@@ -29,21 +30,21 @@ publish:
     path_en: true
     scan_publish_en: true # false: close all the point cloud output
     dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
-    scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
+    scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame
 
 pcd_save:
-    pcd_save_en: true
+    pcd_save_en: false
     interval:
         -1 # how many LiDAR frames saved in each pcd file;
         # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 max_iteration: 3
-filter_size_surf: 0.2
-filter_size_map: 0.2
+filter_size_surf: 0.05
+filter_size_map: 0.05
 cube_side_length: 1000
-runtime_pos_log_enable: 1
+runtime_pos_log_enable: true
 # init_method: PPICP # 建议使用PPICP ，NDT和ICP定位初始化非常容易崩溃
-# NDT:
+# GICP:
 # ICP:
 #     max_iter: 10
 # PPICP:

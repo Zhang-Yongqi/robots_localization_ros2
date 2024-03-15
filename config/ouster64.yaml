@@ -13,33 +13,39 @@ preprocess:
     scan_line: 64
     blind: 0.7 # 最小距离阈值，即过滤掉0～blind范围内的点云
     timestamp_unit: 3 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-    point_filter_num: 4
+    point_filter_num: 5
 
-mapping:
-    acc_cov: 1e-4
-    gyr_cov: 1e-4
+mapping: # 建图和定位参数
+    mapping_en: false # 是否开启建图功能
+    acc_cov: 1e-1
+    gyr_cov: 1e-1
     b_acc_cov: 1e-6
     b_gyr_cov: 1e-6
     fov_degree: 180
     det_range: 150.0
     extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
     extrinsic_T: [-0.006253, 0.011775, -0.007645]
-    # extrinsic_T: [0, 0, 0]
     extrinsic_R: [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
 publish:
     path_en: true
     scan_publish_en: true # false: close all the point cloud output
     dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
-    scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
+    scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame
+
+pcd_save:
+    pcd_save_en: false
+    interval:
+        -1 # how many LiDAR frames saved in each pcd file;
+        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 max_iteration: 3
-filter_size_surf: 0.2
-filter_size_map: 0.2
+filter_size_surf: 0.05
+filter_size_map: 0.05
 cube_side_length: 1000
-runtime_pos_log_enable: 1
+runtime_pos_log_enable: true
 # init_method: PPICP
-# NDT:
+# GICP:
 # ICP:
 #     max_iter: 10
 # PPICP:
