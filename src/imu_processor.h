@@ -12,7 +12,10 @@
 #include <common_lib.h>
 #include <pcl/common/transforms.h>
 #include <sensor_msgs/Imu.h>
+#include <time.h>
 
+#include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <sophus/so3.hpp>
 
@@ -78,6 +81,9 @@ public:
 
   string method;
   bool estimateGrav = true;
+  bool mapping_en = false;
+
+  string timeStr;
 
  private:
   void imu_init(const MeasureGroup &meas,

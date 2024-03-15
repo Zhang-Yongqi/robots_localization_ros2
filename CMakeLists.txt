@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.0.2)
 #set(CMAKE_C_COMPILER "/usr/bin/clang")
 #set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
 
-set(CMAKE_CXX_FLAGS "-std=c++14 -O3" )
+set(CMAKE_CXX_FLAGS "-std=c++17 -O3" )
 # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace")
 set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 # set(CC "ccache gcc")
@@ -15,17 +15,15 @@ project(robots_localization)
 # set(CMAKE_CXX_COMPILER "/usr/bin/g++")
 
 set(CMAKE_BUILD_TYPE "Release")
-add_compile_options(-std=c++14 )
-
-
+add_compile_options(-std=c++17 )
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions -fPIC" )
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++0x -std=c++14 -fexceptions")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++0x -std=c++17 -fexceptions")
 # set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 

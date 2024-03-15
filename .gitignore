@@ -30,12 +30,12 @@
 *.lib
 
 # Media
-.jpg
-.png
-.jpeg
-.avi
-.mp4
-.pcd
+*.jpg
+*.png
+*.jpeg
+*.avi
+*.mp4
+*.pcd
 map
 
 # Executables
@@ -52,3 +52,4 @@ lib
 temp
 cmake-build-debug
 .idea
+log

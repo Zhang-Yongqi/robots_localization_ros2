@@ -18,10 +18,21 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true)
   imu_need_init_ = true;
   init_pose_curr = M4F::Zero();
   init_pose_last = M4F::Zero();
-  fout_init.open((string)ROOT_DIR + "/log/initialization.txt", std::ios::out);
+
+  auto now = std::chrono::system_clock::now();
+  auto time = std::chrono::system_clock::to_time_t(now);
+  struct tm tm;
+  localtime_r(&time, &tm);
+  char formattedTime[20];
+  char *timePtr = formattedTime;
+  sprintf(timePtr, "%4.4d-%2.2d-%2.2d_%2.2d-%2.2d-%2.2d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+          tm.tm_hour, tm.tm_min, tm.tm_sec);
+  timeStr = timePtr;
+  std::filesystem::create_directories((string)ROOT_DIR + "/log");
+  fout_init.open((string)ROOT_DIR + "/log/" + timeStr + "_IMUprocesser.txt", std::ios::out | std::ios::app);
 }
 
-IMUProcessor::~IMUProcessor() {}
+IMUProcessor::~IMUProcessor() { fout_init.close(); }
 
 void IMUProcessor::reset()
 {
@@ -166,147 +177,156 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
     last_imu_ = meas.imu.back();
     last_imu_only_ = meas.imu.back();
 
-    double t1 = omp_get_wtime();
-    float error_min = 1000000.0, validP_max = 0.0;
-    M4F prior_with_min_error = M4F::Zero();
-    if (find_yaw) {
-        M4F prior_with_yaw = init_pose_last;
-        std::pair<float, float> result;
-        result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-        error_min = result.first;
-        validP_max = result.second;
-        prior_with_min_error = prior_with_yaw;
-    } else if (!find_yaw) {
+    bool init_done = false;
+    if (!mapping_en) {
+        double t1 = omp_get_wtime();
+        float error_min = 1000000.0, validP_max = 0.0;
+        M4F prior_with_min_error = M4F::Zero();
+        if (find_yaw) {
+            M4F prior_with_yaw = init_pose_last;
+            std::pair<float, float> result;
+            result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+            error_min = result.first;
+            validP_max = result.second;
+            prior_with_min_error = prior_with_yaw;
+        } else if (!find_yaw) {
 #ifdef MP_EN
-        omp_set_num_threads(MP_PROC_NUM);
+            omp_set_num_threads(MP_PROC_NUM);
 #pragma omp parallel for
 #endif
-        for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]); i++) {
-            float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
-            // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
+            for (int i = 0; i < (int)((YAW_RANGE[2] - YAW_RANGE[0]) / YAW_RANGE[1]); i++) {
+                float yaw = YAW_RANGE[0] + i * YAW_RANGE[1];
+                // std::cout << "iter: " << i << ", yaw: " << yaw << std::endl;
 
-            float error = 0.0, validP = 0.0;
-            std::pair<float, float> result;
-            M4F prior_with_yaw = M4F::Zero();
-            M3F rotation_yaw = M3F::Zero();
-            rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw), std::cos(yaw), 0.0, 0.0, 0.0,
-                1.0;
-            prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
-            prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * init_pose_last.block<3, 3>(0, 0);
+                float error = 0.0, validP = 0.0;
+                std::pair<float, float> result;
+                M4F prior_with_yaw = M4F::Zero();
+                M3F rotation_yaw = M3F::Zero();
+                rotation_yaw << std::cos(yaw), -std::sin(yaw), 0.0, std::sin(yaw), std::cos(yaw), 0.0, 0.0,
+                    0.0, 1.0;
+                prior_with_yaw.block<3, 1>(0, 3) = init_pose_last.block<3, 1>(0, 3);
+                prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * init_pose_last.block<3, 3>(0, 0);
 
-            // if (method == "ICP") {
-            //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
-            // }
-            // else if (method == "PPICP") {
-            result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-            error = result.first;
-            validP = result.second;
-            // }
-            // else
-            // {
-            //   std::cerr << "Not valid method!" << std::endl;
-            //   return false;
-            // }
+                // if (method == "ICP") {
+                //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
+                // }
+                // else if (method == "PPICP") {
+                result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+                error = result.first;
+                validP = result.second;
+                // }
+                // else
+                // {
+                //   std::cerr << "Not valid method!" << std::endl;
+                //   return false;
+                // }
 #ifdef MP_EN
 #pragma omp critical
 #endif
-            {
-                if (error < error_min) {
-                    error_min = error;
-                    prior_with_min_error = prior_with_yaw;
-                    validP_max = validP;
-                    fout_init << "error_min: " << error_min << std::endl;
-                    fout_init << "validP_max: " << validP_max << std::endl;
-                    // std::cout << validP_max << std::endl;
+                {
+                    if (error < error_min) {
+                        error_min = error;
+                        prior_with_min_error = prior_with_yaw;
+                        validP_max = validP;
+                        fout_init << "error_min: " << error_min << std::endl;
+                        fout_init << "validP_max: " << validP_max << std::endl;
+                        // std::cout << validP_max << std::endl;
+                    }
                 }
             }
+            if (validP_max > 0.5) {  // TODO 重新建图后提高
+                find_yaw = true;
+            }
         }
-        if (validP_max > 0.5) {  // TODO 重新建图后提高
-            find_yaw = true;
+        init_pose_curr = prior_with_min_error;
+
+        double t2 = omp_get_wtime();
+        fout_init << "Init align time cost " << t2 - t1 << "s. " << std::endl
+                  << "Current pos:  " << std::endl
+                  << init_pose_curr.block<3, 1>(0, 3) << std::endl
+                  << "Current rot:  " << std::endl
+                  << init_pose_curr.block<3, 3>(0, 0) << std::endl
+                  << "Last pos:  " << std::endl
+                  << init_pose_last.block<3, 1>(0, 3) << std::endl
+                  << "Last rot:  " << std::endl
+                  << init_pose_last.block<3, 3>(0, 0) << std::endl
+                  << std::endl;
+        std::cout << "Init align time cost " << t2 - t1 << "s. " << std::endl
+                  << "Current pos:  " << std::endl
+                  << init_pose_curr.block<3, 1>(0, 3) << std::endl
+                  << "Current rot:  " << std::endl
+                  << init_pose_curr.block<3, 3>(0, 0) << std::endl
+                  << "Last pos:  " << std::endl
+                  << init_pose_last.block<3, 1>(0, 3) << std::endl
+                  << "Last rot:  " << std::endl
+                  << init_pose_last.block<3, 3>(0, 0) << std::endl
+                  << std::endl;
+
+        V3F delta_rvec, delta_tvec;
+        delta_rvec = rotationToEulerAngles(init_pose_curr.block<3, 3>(0, 0) *
+                                           init_pose_last.block<3, 3>(0, 0).inverse());
+        delta_tvec = init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
+        fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
+                  << "delta_rvec: " << delta_rvec.norm() << std::endl;
+        if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 && find_yaw) {
+            init_done = true;
         }
     }
-  init_pose_curr = prior_with_min_error;
 
-  double t2 = omp_get_wtime();
-  fout_init << "Init align time cost " << t2 - t1 << "s. " << std::endl
-            << "Current pos:  " << std::endl
-            << init_pose_curr.block<3, 1>(0, 3) << std::endl
-            << "Current rot:  " << std::endl
-            << init_pose_curr.block<3, 3>(0, 0) << std::endl
-            << "Last pos:  " << std::endl
-            << init_pose_last.block<3, 1>(0, 3) << std::endl
-            << "Last rot:  " << std::endl
-            << init_pose_last.block<3, 3>(0, 0) << std::endl
-            << std::endl;
-  std::cout << "Init align time cost " << t2 - t1 << "s. " << std::endl
-            << "Current pos:  " << std::endl
-            << init_pose_curr.block<3, 1>(0, 3) << std::endl
-            << "Current rot:  " << std::endl
-            << init_pose_curr.block<3, 3>(0, 0) << std::endl
-            << "Last pos:  " << std::endl
-            << init_pose_last.block<3, 1>(0, 3) << std::endl
-            << "Last rot:  " << std::endl
-            << init_pose_last.block<3, 3>(0, 0) << std::endl
-            << std::endl;
+    if (init_done || mapping_en) {
+        state_ikfom imu_state = kf_state.get_x();
+        imu_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
+        imu_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
+        imu_state.vel = vect3(V3D(0.0, 0.0, 0.0));
+        imu_state.grav = imu_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
+        // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
 
-  V3F delta_rvec, delta_tvec;
-  delta_rvec =
-      rotationToEulerAngles(init_pose_curr.block<3, 3>(0, 0) * init_pose_last.block<3, 3>(0, 0).inverse());
-  delta_tvec = init_pose_curr.block<3, 1>(0, 3) - init_pose_last.block<3, 1>(0, 3);
-  fout_init << "delta_tvec: " << delta_tvec.norm() << ", "
-            << "delta_rvec: " << delta_rvec.norm() << std::endl;
-  if (delta_tvec.norm() < 0.1 && delta_rvec.norm() < 0.1 && find_yaw) {
-      state_ikfom imu_state = kf_state.get_x();
-      imu_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
-      imu_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
-      imu_state.vel = vect3(V3D(0.0, 0.0, 0.0));
-      imu_state.grav = imu_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
-      // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
+        imu_state.bg = mean_gyr;  // 角速度测量均值作为陀螺仪偏差
+        imu_state.offset_T_L_I = Lidar_T_wrt_IMU;
+        imu_state.offset_R_L_I = Lidar_R_wrt_IMU;
+        kf_state.change_x(imu_state);
 
-      imu_state.bg = mean_gyr;  // 角速度测量均值作为陀螺仪偏差
-      imu_state.offset_T_L_I = Lidar_T_wrt_IMU;
-      imu_state.offset_R_L_I = Lidar_R_wrt_IMU;
-      kf_state.change_x(imu_state);
+        esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
+        init_P.setIdentity();
+        init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;       // 外参R
+        init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;   // 外参t
+        init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;  // 陀螺仪偏差
+        init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;   // 加速度计偏差
+        init_P(21, 21) = init_P(22, 22) = 0.00001;                  // 重力
+        kf_state.change_P(init_P);
 
-      esekfom::esekf<state_ikfom, 12, input_ikfom>::cov init_P = kf_state.get_P();
-      init_P.setIdentity();
-      init_P(6, 6) = init_P(7, 7) = init_P(8, 8) = 0.00001;       // 外参R
-      init_P(9, 9) = init_P(10, 10) = init_P(11, 11) = 0.00001;   // 外参t
-      init_P(15, 15) = init_P(16, 16) = init_P(17, 17) = 0.0001;  // 陀螺仪偏差
-      init_P(18, 18) = init_P(19, 19) = init_P(20, 20) = 0.001;   // 加速度计偏差
-      init_P(21, 21) = init_P(22, 22) = 0.00001;                  // 重力
-      kf_state.change_P(init_P);
-
-      ROS_INFO(
-          "Initialization Done: pos: %.4f %.4f %.4f"
-          "Gravity: %.4f %.4f %.4f %.4f; "
-          "mean_acc: %.4f %.4f %.4f; "
-          "mean_gyr: %.4f %.4f %.4f; "
-          "bias_acc covariance: %.4f %.4f %.4f; "
-          "bias_gyr covariance: %.4f %.4f %.4f; "
-          "acc covarience: %.8f %.8f %.8f; "
-          "gyr covarience: %.8f %.8f %.8f",
-          imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1],
-          imu_state.grav[2], mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0], mean_gyr[1],
-          mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0], cov_bias_gyr[1],
-          cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
-      fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", "
-                << imu_state.pos[2] << std::endl
-                << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", " << imu_state.grav[2]
-                << std::endl
-                << "mean_acc: " << mean_acc[0] << ", " << mean_acc[1] << ", " << mean_acc[2] << std::endl
-                << "mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2] << std::endl
-                << "bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1] << ", "
-                << cov_bias_acc[2] << std::endl
-                << "bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1] << ", "
-                << cov_bias_gyr[2] << std::endl
-                << "acc covarience: " << cov_acc[0] << ", " << cov_acc[1] << ", " << cov_acc[2] << std::endl
-                << "gyr covarience: " << cov_gyr[0] << ", " << cov_gyr[1] << ", " << cov_gyr[2] << std::endl;
-      return true;
-  }
-  std::cout << "init pose last change" << std::endl;
-  init_pose_last = init_pose_curr;
-  return false;
+        ROS_INFO(
+            "Initialization Done: pos: %.4f %.4f %.4f"
+            "Gravity: %.4f %.4f %.4f %.4f; "
+            "mean_acc: %.4f %.4f %.4f; "
+            "mean_gyr: %.4f %.4f %.4f; "
+            "bias_acc covariance: %.4f %.4f %.4f; "
+            "bias_gyr covariance: %.4f %.4f %.4f; "
+            "acc covarience: %.8f %.8f %.8f; "
+            "gyr covarience: %.8f %.8f %.8f",
+            imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1],
+            imu_state.grav[2], mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0],
+            mean_gyr[1], mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0],
+            cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
+            cov_gyr[2]);
+        fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", "
+                  << imu_state.pos[2] << std::endl
+                  << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", "
+                  << imu_state.grav[2] << std::endl
+                  << "mean_acc: " << mean_acc[0] << ", " << mean_acc[1] << ", " << mean_acc[2] << std::endl
+                  << "mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2] << std::endl
+                  << "bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1] << ", "
+                  << cov_bias_acc[2] << std::endl
+                  << "bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1] << ", "
+                  << cov_bias_gyr[2] << std::endl
+                  << "acc covarience: " << cov_acc[0] << ", " << cov_acc[1] << ", " << cov_acc[2] << std::endl
+                  << "gyr covarience: " << cov_gyr[0] << ", " << cov_gyr[1] << ", " << cov_gyr[2]
+                  << std::endl;
+        return true;
+    }
+    std::cout << "init pose last change" << std::endl;
+    init_pose_last = init_pose_curr;
+    return false;
 }
 
 // 正向传播 反向传播 去畸变

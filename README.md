@@ -2,6 +2,12 @@
 
 RoboMaster2023 哨兵定位代码，基于FAST LIO 2进行开发
 
+## TODO
+
+1. 建图加入GTSAM回环检测
+2. 增加关键帧机制，帮助重定位
+3. 完善gicp
+
 ## 环境配置
 
 - Sophs

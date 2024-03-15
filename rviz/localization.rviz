@@ -92,7 +92,7 @@ Visualization Manager:
       Size (Pixels): 3
       Size (m): 0.009999999776482582
       Style: Points
-      Topic: /cloud_registered_body
+      Topic: /cloud_registered_world
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
