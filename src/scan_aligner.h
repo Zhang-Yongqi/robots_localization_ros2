@@ -41,11 +41,11 @@ class ScanAligner {
         pcl::search::KdTree<PointType> &search_target_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
-        PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_);
+        PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_, float &error, float &valid_proportion);
 
     static bool is_converged(const Eigen::Isometry3f &delta);
 
-    static float linearize(
+    static std::pair<float, float> linearize(
         const Eigen::Isometry3f &trans, Eigen::Matrix<float, 6, 6> *H, Eigen::Matrix<float, 6, 1> *b,
         std::vector<int> &correspondences_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
@@ -54,7 +54,7 @@ class ScanAligner {
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
         PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_);
 
-    static void update_correspondences(
+    static float update_correspondences(
         const Eigen::Isometry3f &trans, std::vector<int> &correspondences_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
         pcl::search::KdTree<PointType> &search_target_,

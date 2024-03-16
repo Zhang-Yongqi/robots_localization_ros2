@@ -186,6 +186,7 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
             M4F prior_with_yaw = init_pose_last;
             std::pair<float, float> result;
             result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
+            // result = ScanAligner::init_gicp_method(prior_with_yaw, meas.lidar, map);
             error_min = result.first;
             validP_max = result.second;
             prior_with_min_error = prior_with_yaw;
@@ -230,11 +231,10 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
                         validP_max = validP;
                         fout_init << "error_min: " << error_min << std::endl;
                         fout_init << "validP_max: " << validP_max << std::endl;
-                        // std::cout << validP_max << std::endl;
                     }
                 }
             }
-            if (validP_max > 0.5) {  // TODO 重新建图后提高
+            if (validP_max > 0.8) {
                 find_yaw = true;
             }
         }

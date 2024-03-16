@@ -919,13 +919,13 @@ void h_share_model(state_ikfom &s,
   }
 }
 
-bool isinit = false;  // 无串口时调试用
+// bool isinit = false;  // 无串口时调试用
 void mainProcess() {
     // 无串口时调试用
-    if (isinit == false) {
-        mode_changed = true;
-        isinit = true;
-    }
+    // if (isinit == false) {
+    //     mode_changed = true;
+    //     isinit = true;
+    // }
 
     if (mode_changed && !mapping_en) {
         if (mode_status) {
