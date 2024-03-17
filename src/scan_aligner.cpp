@@ -11,6 +11,7 @@ ScanAligner::~ScanAligner() {}
 
 int ScanAligner::max_iter;
 float ScanAligner::plane_dist;
+bool ScanAligner::covInit = false;
 
 std::pair<float, float> ScanAligner::init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose) {
     return std::make_pair(0, 0);
@@ -203,23 +204,23 @@ std::pair<float, float> ScanAligner::init_ppicp_method(KD_TREE<PointType> &kdtre
     return std::make_pair(whole_dist, p_valid_proportion);
 }
 
-std::pair<float, float> ScanAligner::init_gicp_method(M4F &predict_pose, PointCloudXYZI::Ptr scan_,
+std::pair<float, float> ScanAligner::init_gicp_method(M4F &predict_pose, PointCloudXYZI::Ptr source_,
                                                       PointCloudXYZI::Ptr target_) {
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> source_covs_;
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> target_covs_;
     pcl::search::KdTree<PointType> search_source_;
     pcl::search::KdTree<PointType> search_target_;
-    PointCloudXYZI::Ptr source_(new PointCloudXYZI());
-    pcl::transformPointCloud(*scan_, *source_, predict_pose);
-    calculate_covariances(source_, source_covs_, search_source_);
-    calculate_covariances(target_, target_covs_, search_target_);
-
+    if (!covInit) {
+        calculate_covariances(source_, source_covs_, search_source_);
+        calculate_covariances(target_, target_covs_, search_target_);
+        covInit = true;
+    }
     Eigen::Isometry3f x0 = Eigen::Isometry3f(predict_pose);
 
     float lm_lambda_ = -1.0;
     bool converged_ = false;
     float error, valid_proportion;
-    for (int i = 0; i < 32 && !converged_; i++) {
+    for (int i = 0; i < max_iter && !converged_; i++) {
         Eigen::Isometry3f delta;
         if (!step_optimize(x0, delta, lm_lambda_, search_target_, source_covs_, target_covs_, source_,
                            target_, error, valid_proportion)) {
@@ -239,7 +240,7 @@ std::pair<float, float> ScanAligner::init_gicp_method(M4F &predict_pose, PointCl
 bool ScanAligner::calculate_covariances(
     const typename pcl::PointCloud<PointType>::ConstPtr &cloud,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &covariances,
-    pcl::search::KdTree<PointType> &kdtree) {
+    pcl::search::Search<PointType> &kdtree) {
     kdtree.setInputCloud(cloud);
     covariances.resize(cloud->size());
 
@@ -296,7 +297,7 @@ bool ScanAligner::calculate_covariances(
 
 bool ScanAligner::step_optimize(
     Eigen::Isometry3f &x0, Eigen::Isometry3f &delta, float &lm_lambda_,
-    pcl::search::KdTree<PointType> &search_target_,
+    pcl::search::Search<PointType> &search_target_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
     PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_, float &error, float &valid_proportion) {
@@ -344,8 +345,8 @@ bool ScanAligner::step_optimize(
 }
 
 bool ScanAligner::is_converged(const Eigen::Isometry3f &delta) {
-    float rotation_epsilon_ = 0.01;
-    float transformation_epsilon_ = 0.01;
+    float rotation_epsilon_ = 2e-3;
+    float transformation_epsilon_ = 5e-4;
     Eigen::Matrix3f R = delta.linear() - Eigen::Matrix3f::Identity();
     Eigen::Vector3f t = delta.translation();
 
@@ -359,7 +360,7 @@ std::pair<float, float> ScanAligner::linearize(
     const Eigen::Isometry3f &trans, Eigen::Matrix<float, 6, 6> *H, Eigen::Matrix<float, 6, 1> *b,
     std::vector<int> &correspondences_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
-    pcl::search::KdTree<PointType> &search_target_,
+    pcl::search::Search<PointType> &search_target_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
     PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_) {
@@ -426,7 +427,7 @@ std::pair<float, float> ScanAligner::linearize(
 float ScanAligner::update_correspondences(
     const Eigen::Isometry3f &trans, std::vector<int> &correspondences_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
-    pcl::search::KdTree<PointType> &search_target_,
+    pcl::search::Search<PointType> &search_target_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
     std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
     PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_) {
@@ -441,7 +442,8 @@ float ScanAligner::update_correspondences(
 
     std::vector<int> k_indices(1);
     std::vector<float> k_sq_dists(1);
-    float corr_dist_threshold_ = 0.5;
+    // float corr_dist_threshold_ = 1.0;
+    float corr_dist_threshold_ = std::numeric_limits<float>::max();
     float p_valid = 0;
     int p_num = source_->size();
 #pragma omp parallel for num_threads(MP_PROC_NUM) firstprivate(k_indices, k_sq_dists) reduction(+ : p_valid) \
@@ -454,7 +456,7 @@ float ScanAligner::update_correspondences(
         search_target_.nearestKSearch(pt, 1, k_indices, k_sq_dists);
 
         sq_distances_[i] = k_sq_dists[0];
-        correspondences_[i] = k_sq_dists[0] < corr_dist_threshold_ * corr_dist_threshold_ ? k_indices[1] : -1;
+        correspondences_[i] = k_sq_dists[0] < corr_dist_threshold_ * corr_dist_threshold_ ? k_indices[0] : -1;
 
         if (correspondences_[i] < 0) {
             continue;

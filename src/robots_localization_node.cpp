@@ -195,7 +195,7 @@ void loadConfig(const ros::NodeHandle &nh)
       nh.param<float>("PPICP/plane_dist", ScanAligner::plane_dist, 0.1);
       nh.param<int>("PPICP/max_iter", ScanAligner::max_iter, 10);
   } else if (p_imu->method == "GICP") {
-      nh.param<int>("GICP/max_iter", ScanAligner::max_iter, 64);
+      nh.param<int>("GICP/max_iter", ScanAligner::max_iter, 10);
   } else {
       std::cerr << "Not valid init method!" << std::endl;
   }

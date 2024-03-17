@@ -23,6 +23,7 @@ class ScanAligner {
 
     static int max_iter;
     static float plane_dist;
+    static bool covInit;
 
     static std::pair<float, float> init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose);
     static std::pair<float, float> init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
@@ -34,11 +35,11 @@ class ScanAligner {
     static bool calculate_covariances(
         const typename pcl::PointCloud<PointType>::ConstPtr &cloud,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &covariances,
-        pcl::search::KdTree<PointType> &kdtree);
+        pcl::search::Search<PointType> &kdtree);
 
     static bool step_optimize(
         Eigen::Isometry3f &x0, Eigen::Isometry3f &delta, float &lm_lambda_,
-        pcl::search::KdTree<PointType> &search_target_,
+        pcl::search::Search<PointType> &search_target_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
         PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_, float &error, float &valid_proportion);
@@ -49,7 +50,7 @@ class ScanAligner {
         const Eigen::Isometry3f &trans, Eigen::Matrix<float, 6, 6> *H, Eigen::Matrix<float, 6, 1> *b,
         std::vector<int> &correspondences_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
-        pcl::search::KdTree<PointType> &search_target_,
+        pcl::search::Search<PointType> &search_target_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
         PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_);
@@ -57,7 +58,7 @@ class ScanAligner {
     static float update_correspondences(
         const Eigen::Isometry3f &trans, std::vector<int> &correspondences_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &mahalanobis_,
-        pcl::search::KdTree<PointType> &search_target_,
+        pcl::search::Search<PointType> &search_target_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &source_covs_,
         std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> &target_covs_,
         PointCloudXYZI::Ptr source_, PointCloudXYZI::Ptr target_);
