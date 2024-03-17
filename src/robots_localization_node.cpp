@@ -1135,6 +1135,12 @@ int main(int argc, char **argv)
           PCL_ERROR("Couldn't read file map.pcd\n");
           return (-1);
       }
+
+      // 去除NaN
+      std::vector<int> indices;
+      global_map->is_dense = false;
+      pcl::removeNaNFromPointCloud(*global_map, *global_map, indices);
+
       std::cout << "map cloud width: " << global_map->width << std::endl;
       std::cout << "map cloud height: " << global_map->height << std::endl;
       if (ikdtree.Root_Node == nullptr) {

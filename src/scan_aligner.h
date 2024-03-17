@@ -25,6 +25,11 @@ class ScanAligner {
     static float plane_dist;
     static bool covInit;
 
+    static std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> source_covs_;
+    static std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> target_covs_;
+    static pcl::search::KdTree<PointType> search_source_;
+    static pcl::search::KdTree<PointType> search_target_;
+
     static std::pair<float, float> init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose);
     static std::pair<float, float> init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
                                                    M4F &predict_pose);

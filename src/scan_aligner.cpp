@@ -13,6 +13,11 @@ int ScanAligner::max_iter;
 float ScanAligner::plane_dist;
 bool ScanAligner::covInit = false;
 
+std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> ScanAligner::source_covs_;
+std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> ScanAligner::target_covs_;
+pcl::search::KdTree<PointType> ScanAligner::search_source_;
+pcl::search::KdTree<PointType> ScanAligner::search_target_;
+
 std::pair<float, float> ScanAligner::init_ndt_method(PointCloudXYZI::Ptr scan, M4F &predict_pose) {
     return std::make_pair(0, 0);
 }
@@ -206,10 +211,6 @@ std::pair<float, float> ScanAligner::init_ppicp_method(KD_TREE<PointType> &kdtre
 
 std::pair<float, float> ScanAligner::init_gicp_method(M4F &predict_pose, PointCloudXYZI::Ptr source_,
                                                       PointCloudXYZI::Ptr target_) {
-    std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> source_covs_;
-    std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> target_covs_;
-    pcl::search::KdTree<PointType> search_source_;
-    pcl::search::KdTree<PointType> search_target_;
     if (!covInit) {
         calculate_covariances(source_, source_covs_, search_source_);
         calculate_covariances(target_, target_covs_, search_target_);
@@ -248,6 +249,10 @@ bool ScanAligner::calculate_covariances(
     for (int i = 0; i < cloud->size(); i++) {
         std::vector<int> k_indices;
         std::vector<float> k_sq_distances;
+
+        if (!pcl::isFinite(cloud->at(i))) {
+            continue;
+        }
         kdtree.nearestKSearch(cloud->at(i), 16, k_indices, k_sq_distances);
 
         Eigen::Matrix<float, 4, -1> neighbors(4, 16);
@@ -452,7 +457,10 @@ float ScanAligner::update_correspondences(
         PointType pt;
 
         pt.getVector4fMap() = trans_f * source_->at(i).getVector4fMap();
-
+        if (!pcl::isFinite(pt)) {
+            correspondences_[i] = -1;
+            continue;
+        }
         search_target_.nearestKSearch(pt, 1, k_indices, k_sq_dists);
 
         sq_distances_[i] = k_sq_dists[0];
