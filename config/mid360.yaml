@@ -39,7 +39,7 @@ pcd_save:
         # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 max_iteration: 3
-filter_size_surf: 0.05
+filter_size_surf: 0.15 # 建图0.05
 filter_size_map: 0.05
 cube_side_length: 1000
 runtime_pos_log_enable: true
