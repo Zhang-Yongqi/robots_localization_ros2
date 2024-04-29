@@ -13,7 +13,7 @@ preprocess:
     scan_line: 64
     blind: 0.7 # 最小距离阈值，即过滤掉0～blind范围内的点云
     timestamp_unit: 3 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-    point_filter_num: 5
+    point_filter_num: 6
 
 mapping: # 建图和定位参数
     mapping_en: false # 是否开启建图功能

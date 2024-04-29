@@ -961,10 +961,20 @@ void mainProcess() {
         }
         ROS_ASSERT(Measures.lidar != nullptr);
 
-        // 初始化位姿
-        if (!initialized) {
-            initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+        if (p_imu->imu_need_init_) {
+            /// The very first lidar frame
+            p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
             return;
+        }
+
+        {
+            mtx_buffer.lock();
+            // 初始化位姿
+            while (!initialized) {
+                initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+            }
+            mtx_buffer.unlock();
+            sig_buffer.notify_all();
         }
 
         // 重定位
@@ -983,10 +993,16 @@ void mainProcess() {
                     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
                     initT_flag = true;
                 }
-                if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
-                    need_reloc = false;
-                    reloc_initT = V3F(0.0, 0.0, 0.0);
+                if (p_imu->imu_need_init_) {
+                    /// The very first lidar frame
+                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
+                    return;
                 }
+                while (!initialized) {
+                    initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+                }
+                need_reloc = false;
+                reloc_initT = V3F(0.0, 0.0, 0.0);
                 return;
             }
         }

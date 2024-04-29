@@ -168,11 +168,6 @@ void IMUProcessor::imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom
 bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
                              PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree, vector<float> &YAW_RANGE) {
     std::cout << "begin to init pose " << std::endl;
-    if (imu_need_init_) {
-        /// The very first lidar frame
-        imu_init(meas, kf_state, init_iter_num);
-        return false;
-    }
 
     last_imu_ = meas.imu.back();
     last_imu_only_ = meas.imu.back();

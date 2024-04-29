@@ -6,7 +6,7 @@
     <rosparam command="load" file="$(find robots_localization)/config/ouster64.yaml" />
 
     <!-- <param name="pcd_path" type="string" value="../FAST_LIO/PCD/scans.pcd" /> -->
-    <param name="pcd_path" type="string" value="$(find robots_localization)/map/scans.pcd" />
+    <param name="pcd_path" type="string" value="$(find robots_localization)/map/map" />
 
 
     <node pkg="robots_localization" type="robots_localization" name="robots_localization"
