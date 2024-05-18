@@ -18,6 +18,7 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true)
   imu_need_init_ = true;
   init_pose_curr = M4F::Zero();
   init_pose_last = M4F::Zero();
+  gravR = Eye3f;
 
   auto now = std::chrono::system_clock::now();
   auto time = std::chrono::system_clock::to_time_t(now);
@@ -48,6 +49,7 @@ void IMUProcessor::reset()
   b_first_frame_ = true;
   find_yaw = false;
   imu_need_init_ = true;
+  gravR = Eye3f;
 
   cov_acc = V3D(0.1, 0.1, 0.1);
   cov_gyr = V3D(0.1, 0.1, 0.1);
@@ -154,8 +156,10 @@ void IMUProcessor::imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom
             std::cout << "   Pitch [deg]: " << to_string(pitch) << std::endl;
             std::cout << "   Yaw   [deg]: " << to_string(yaw) << std::endl;
             std::cout << std::endl;
+            gravR = initPoseR;
         } else {
             initPoseR = init_pose_curr.block<3, 3>(0, 0);
+            gravR = Eye3f;
         }
         initPoseT = init_pose_curr.block<3, 1>(0, 3);
         set_init_pose(initPoseT, initPoseR);
@@ -273,7 +277,7 @@ bool IMUProcessor::init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfo
         imu_state.pos = vect3(init_pose_curr.block<3, 1>(0, 3).cast<double>());
         imu_state.rot = SO3(init_pose_curr.block<3, 3>(0, 0).cast<double>());
         imu_state.vel = vect3(V3D(0.0, 0.0, 0.0));
-        imu_state.grav = imu_state.rot * S2(-mean_acc / mean_acc.norm() * G_m_s2);
+        imu_state.grav = (gravR.cast<double>()) * S2(-mean_acc / mean_acc.norm() * G_m_s2);
         // 从common_lib.h中拿到重力，并与加速度测量均值的单位重力求出S2的旋转矩阵类型的重力加速度
 
         imu_state.bg = mean_gyr;  // 角速度测量均值作为陀螺仪偏差

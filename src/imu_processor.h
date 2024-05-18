@@ -105,6 +105,7 @@ public:
   bool b_first_frame_;
   V3D mean_acc;
   V3D mean_gyr;
+  M3F gravR;
 
   std::ofstream fout_init;
 };

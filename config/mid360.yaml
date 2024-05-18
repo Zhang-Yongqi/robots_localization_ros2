@@ -52,8 +52,8 @@ runtime_pos_log_enable: true
 #     max_iter: 10
 
 prior:
-    red_prior_T: [0 ,0, 0]
-    blue_prior_T: [0 ,0, 0]
+    red_prior_T: [6 ,7, 1]
+    blue_prior_T: [6 ,7, 1]
     estimateGrav: true
     prior_R: [1 ,0, 0,
               0 ,1, 0,
