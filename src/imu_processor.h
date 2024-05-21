@@ -57,6 +57,8 @@ public:
 
   void set_acc_bias_cov(const V3D &b_a);
 
+  void imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
+
   bool init_pose(const MeasureGroup &meas,
                  esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
                  PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
@@ -85,10 +87,10 @@ public:
 
   string timeStr;
 
- private:
-  void imu_init(const MeasureGroup &meas,
-                esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
+  bool imu_need_init_;
+  int init_iter_num;
 
+ private:
   sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
   vector<Pose6D> IMUpose;
   V3D acc_s_last, angvel_last;
@@ -101,11 +103,10 @@ public:
   M4F init_pose_curr;
   M4F init_pose_last;
   bool b_first_frame_;
-  bool imu_need_init_;
   V3D mean_acc;
   V3D mean_gyr;
+  M3F gravR;
 
-  int init_iter_num;
   std::ofstream fout_init;
 };
 

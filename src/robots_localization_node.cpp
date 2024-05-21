@@ -961,10 +961,20 @@ void mainProcess() {
         }
         ROS_ASSERT(Measures.lidar != nullptr);
 
-        // 初始化位姿
-        if (!initialized) {
-            initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+        if (p_imu->imu_need_init_) {
+            /// The very first lidar frame
+            p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
             return;
+        }
+
+        {
+            mtx_buffer.lock();
+            // 初始化位姿
+            while (!initialized) {
+                initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+            }
+            mtx_buffer.unlock();
+            sig_buffer.notify_all();
         }
 
         // 重定位
@@ -983,10 +993,16 @@ void mainProcess() {
                     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
                     initT_flag = true;
                 }
-                if (p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE)) {
-                    need_reloc = false;
-                    reloc_initT = V3F(0.0, 0.0, 0.0);
+                if (p_imu->imu_need_init_) {
+                    /// The very first lidar frame
+                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
+                    return;
                 }
+                while (!initialized) {
+                    initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+                }
+                need_reloc = false;
+                reloc_initT = V3F(0.0, 0.0, 0.0);
                 return;
             }
         }
@@ -1083,10 +1099,10 @@ void mainProcessThread() {
     /* 1. make sure you have enough memories
     /* 2. pcd save will largely influence the real-time performences **/
     if (pcl_wait_save->size() > 0 && pcd_save_en && mapping_en) {
-        string file_name = string("scans.pcd");
-        string all_points_dir(string(string(ROOT_DIR) + "PCD/") + file_name);
+        string file_name = string("_scans.pcd");
+        string all_points_dir(string(string(ROOT_DIR) + "PCD/") + p_imu->timeStr + file_name);
         pcl::PCDWriter pcd_writer;
-        cout << "current scan saved to /PCD/" << file_name << endl;
+        cout << "current scan saved to /PCD/" << p_imu->timeStr + file_name << endl;
         pcd_writer.writeBinary(all_points_dir, *pcl_wait_save);
 
         PointCloudXYZI::Ptr featsFromMap(new PointCloudXYZI());
@@ -1095,10 +1111,10 @@ void mainProcessThread() {
         featsFromMap->clear();
         featsFromMap->points = ikdtree.PCL_Storage;
 
-        string file_name_ = string("scans_ikdtree.pcd");
-        string all_points_dir_(string(string(ROOT_DIR) + "PCD/") + file_name_);
+        string file_name_ = string("_scans_ikdtree.pcd");
+        string all_points_dir_(string(string(ROOT_DIR) + "PCD/") + p_imu->timeStr + file_name_);
         pcl::PCDWriter pcd_writer_;
-        cout << "current scan saved to /PCD/" << file_name_ << endl;
+        cout << "current scan saved to /PCD/" << p_imu->timeStr + file_name_ << endl;
         pcd_writer.writeBinary(all_points_dir_, *featsFromMap);
     }
     fout_pose.close();

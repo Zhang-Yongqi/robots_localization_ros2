@@ -29,7 +29,7 @@ mapping: # 建图和定位参数
 publish:
     path_en: true
     scan_publish_en: true # false: close all the point cloud output
-    dense_publish_en: false # false: low down the points number in a global-frame point clouds scan.
+    dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame
 
 pcd_save:
@@ -39,7 +39,7 @@ pcd_save:
         # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 max_iteration: 3
-filter_size_surf: 0.05
+filter_size_surf: 0.15 # 建图0.05
 filter_size_map: 0.05
 cube_side_length: 1000
 runtime_pos_log_enable: true
