@@ -29,6 +29,7 @@ mapping: # 建图和定位参数
 
 publish:
     path_en: true
+    imu2robot_T: [0, 0, 0] # 机器人坐标系下imu的位置
     scan_publish_en: true # false: close all the point cloud output
     dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
     scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame

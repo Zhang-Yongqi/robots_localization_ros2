@@ -80,8 +80,10 @@ M3F prior_R(Eye3f);
 bool mode_status = 0, mode_changed = false, pose_inited = false; // 0为红方，1 为蓝方
 vector<double> extrinT(3, 0.0);
 vector<double> extrinR(9, 0.0);
+vector<double> imu2robotT(3, 0.0);
 V3D Lidar_T_wrt_IMU(Zero3d);
 M3D Lidar_R_wrt_IMU(Eye3d);
+V3D Robot_T_wrt_IMU(Zero3d);
 
 pcl::VoxelGrid<PointType> downSizeFilterSurf;
 
@@ -174,6 +176,7 @@ void loadConfig(const ros::NodeHandle &nh)
   nh.param<int>("pcd_save/interval", pcd_save_interval, -1);
 
   nh.param<bool>("publish/path_en", path_en, true);
+  nh.param<vector<double>>("publish/imu2robot_T", imu2robotT, vector<double>());
   nh.param<bool>("publish/scan_publish_en", scan_pub_en, true);
   nh.param<bool>("publish/dense_publish_en", dense_pub_en, true);
   nh.param<bool>("publish/scan_bodyframe_pub_en", scan_body_pub_en, true);
@@ -464,9 +467,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
           odomAftMappedIMU.header.frame_id = "camera_init";
           odomAftMappedIMU.child_frame_id = "body";
           odomAftMappedIMU.header.stamp = ros::Time().fromSec(last_timestamp_imu);
-          odomAftMappedIMU.pose.pose.position.x = state_point_imu.pos(0);
-          odomAftMappedIMU.pose.pose.position.y = state_point_imu.pos(1);
-          odomAftMappedIMU.pose.pose.position.z = state_point_imu.pos(2);
+          V3D pos_robot = state_point_imu.pos + state_point_imu.rot * Robot_T_wrt_IMU;
+          odomAftMappedIMU.pose.pose.position.x = pos_robot(0);
+          odomAftMappedIMU.pose.pose.position.y = pos_robot(1);
+          odomAftMappedIMU.pose.pose.position.z = pos_robot(2);
           odomAftMappedIMU.twist.twist.linear.x = state_point_imu.vel(0);
           odomAftMappedIMU.twist.twist.linear.y = state_point_imu.vel(1);
           odomAftMappedIMU.twist.twist.linear.z = state_point_imu.vel(2);
@@ -592,13 +596,14 @@ bool sync_packages(MeasureGroup &meas)
 template <typename T>
 void set_posestamp(T &out)
 {
-  out.pose.position.x = state_point.pos(0);
-  out.pose.position.y = state_point.pos(1);
-  out.pose.position.z = state_point.pos(2);
-  out.pose.orientation.x = geoQuat.x;
-  out.pose.orientation.y = geoQuat.y;
-  out.pose.orientation.z = geoQuat.z;
-  out.pose.orientation.w = geoQuat.w;
+    V3D pos_robot = state_point.pos + state_point.rot * Robot_T_wrt_IMU;
+    out.pose.position.x = pos_robot(0);
+    out.pose.position.y = pos_robot(1);
+    out.pose.position.z = pos_robot(2);
+    out.pose.orientation.x = geoQuat.x;
+    out.pose.orientation.y = geoQuat.y;
+    out.pose.orientation.z = geoQuat.z;
+    out.pose.orientation.w = geoQuat.w;
 }
 
 // 通过pubOdomAftMapped发布位姿odomAftMapped，同时计算协方差存在kf中，同tf计算位姿
@@ -1173,6 +1178,7 @@ int main(int argc, char **argv)
   std::cout << "blue init T: " << blue_prior_T << std::endl;
   Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT);
   Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR);
+  Robot_T_wrt_IMU << VEC_FROM_ARRAY(imu2robotT);
   p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
   p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
   p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
