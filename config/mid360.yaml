@@ -11,7 +11,7 @@ common:
 preprocess:
     lidar_type: 1 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
     scan_line: 4
-    blind: 0.7
+    blind: 0.35
     point_filter_num: 1
 
 mapping: # 建图和定位参数
@@ -53,8 +53,8 @@ runtime_pos_log_enable: true
 #     max_iter: 10
 
 prior:
-    red_prior_T: [4.4 ,9.0, 0.7]         #3, 6, 0.7  6.98 , 11.7, 0.7 3.5 ,7
-    blue_prior_T: [20.8, 6.0, 0.7]      #[10 ,2.4, 0.7]   [6 ,3.9, 0.7] 
+    red_prior_T: [2.0 ,7.0, 0.2]         #3, 6, 0.7  6.98 , 11.7, 0.7 3.5 ,7
+    blue_prior_T: [2.0, 7.0, 0.2]      #[10 ,2.4, 0.7]   [6 ,3.9, 0.7] 
     estimateGrav: true
     prior_R: [1 ,0, 0,
               0 ,1, 0,
