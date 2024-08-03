@@ -51,7 +51,7 @@ bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false;
 bool extrinsic_est_en = true, runtime_pos_log = false, pcd_save_en = false, flg_exit = false,
      flg_EKF_inited = false;
-bool lidar_pushed, flg_first_scan = true, initialized = false, first_pub = true;
+bool lidar_pushed, flg_first_scan = true, initialized = false, initializing_pose = false, first_pub = true;
 
 double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
@@ -66,7 +66,8 @@ int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0, pcd_save_interval = -1;
 int feats_down_size = 0;
 
-bool need_reloc = false, imu_only_ready = false, point_not_enough = false, initT_flag = true;
+bool need_reloc = false, imu_only_ready = false, initT_flag = true;
+int init_num = 0;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT(Zero3f);
 
@@ -76,6 +77,7 @@ vector<float> YAW_RANGE(3, 0.0);
 vector<float> priorR(9, 0.0);
 V3F red_prior_T(Zero3f);
 V3F blue_prior_T(Zero3f);
+V3F prior_T(Zero3f);
 M3F prior_R(Eye3f);
 bool mode_status = 0, mode_changed = false, pose_inited = false; // 0为红方，1 为蓝方
 vector<double> extrinT(3, 0.0);
@@ -374,6 +376,9 @@ double timediff_lidar_wrt_imu = 0.0; // lidar imu 时间差
 bool timediff_set_flg = false;       // 是否已经计算了时间差
 // livox激光雷达回调函数
 void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
+    if (initializing_pose) {
+        return;
+    }
     mtx_buffer.lock();
     scan_count++;
     if (msg->header.stamp.toSec() < last_timestamp_lidar) {
@@ -434,6 +439,9 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
   // start_time = ros::Time::now();
   // duration_time = start_time - end_time;
   // ROS_INFO("imu spin time is %f", duration_time.toSec() * 1000);
+  if (initializing_pose) {
+      return;
+  }
 
   publish_count++;
   sensor_msgs::Imu::Ptr msg(new sensor_msgs::Imu(*msg_in));
@@ -497,10 +505,10 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 void reloc_cbk(const RobotCommand::ConstPtr &msg_in)
 {
   mtx_buffer.lock();
-  if (msg_in->commd_keyboard == 82)
-  {
-    reloc_initT << msg_in->target_position_x, msg_in->target_position_y,
-        msg_in->target_position_z;
+  V3F tmp_pos << msg_in->target_position_x, msg_in->target_position_y, msg_in->target_position_z;
+  if (msg_in->commd_keyboard == 82 && (tmp_pos - reloc_initT).norm() > 0.1) {
+      need_reloc = true;
+      reloc_initT = tmp_pos;
   }
   mtx_buffer.unlock();
 }
@@ -613,15 +621,6 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped)
   odomAftMapped.child_frame_id = "body";
   odomAftMapped.header.stamp = ros::Time().fromSec(lidar_end_time);
   set_posestamp(odomAftMapped.pose); // 设置位置，欧拉角
-
-  ////////////////触发重定位////////////////
-  if (point_valid_proportion < 0.2 || point_not_enough) {
-      need_reloc = true;
-      initT_flag = false;
-  } else {
-      need_reloc = false;
-      initT_flag = true;
-  }
 
   odomAftMapped.twist.twist.linear.x = state_point.vel(0);
   odomAftMapped.twist.twist.linear.y = state_point.vel(1);
@@ -851,11 +850,6 @@ void h_share_model(state_ikfom &s,
     }
   }
   point_valid_proportion = point_valid_num / point_num;
-  if (point_valid_num < 100) {
-      point_not_enough = true;
-  } else {
-      point_not_enough = false;
-  }
 
   // 根据point_selected_surf状态判断哪些点是可用的
   effct_feat_num = 0;
@@ -934,12 +928,13 @@ void mainProcess() {
 
     if (mode_changed && !mapping_en) {
         if (mode_status) {
-            p_imu->set_init_pose(blue_prior_T, prior_R);
+            prior_T = blue_prior_T;
             std::cout << "init with blue" << std::endl << std::endl;
         } else {
-            p_imu->set_init_pose(red_prior_T, prior_R);
+            prior_T = red_prior_T;
             std::cout << "init with red" << std::endl << std::endl;
         }
+        p_imu->set_init_pose(prior_T, prior_R);
         mode_changed = false;
         pose_inited = true;
     }
@@ -973,43 +968,27 @@ void mainProcess() {
         }
 
         {
-            mtx_buffer.lock();
             // 初始化位姿
             while (!initialized) {
+                initializing_pose = true;
                 initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
-            }
-            mtx_buffer.unlock();
-            sig_buffer.notify_all();
-        }
-
-        // 重定位
-        if (need_reloc && !mapping_en) {
-            std::cout << "!!!!!!!!!need relocalization!!!!!!!!!" << std::endl;
-            if (reloc_initT.norm() > 0.01) {
-                std::cout << "reloc_initT: " << reloc_initT << std::endl;
-                if (!initT_flag) {
-                    imu_only_ready = false;
+                init_num += 1;
+                if (init_num > 15) {
                     p_imu->reset();
-                    p_imu->set_init_pose(reloc_initT, prior_R);
+                    p_imu->set_init_pose(prior_T, prior_R);
                     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
                     p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
                     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
                     p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
                     p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-                    initT_flag = true;
-                }
-                if (p_imu->imu_need_init_) {
-                    /// The very first lidar frame
-                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
+                    std::cout << "init failed, reset" << std::endl;
+                    initializing_pose = false;
                     return;
                 }
-                while (!initialized) {
-                    initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
-                }
-                need_reloc = false;
-                reloc_initT = V3F(0.0, 0.0, 0.0);
-                return;
             }
+            initializing_pose = false;
+            init_num = 0;
+            sig_buffer.notify_all();
         }
 
         // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理
@@ -1047,6 +1026,47 @@ void mainProcess() {
         if (feats_down_size < 5) {
             ROS_WARN("No point, skip this scan!\n");
             return;
+        }
+
+        // 重定位
+        if (need_reloc && !mapping_en) {
+            std::cout << "!!!!!!!!!start relocalization!!!!!!!!!" << std::endl;
+            if (reloc_initT.norm() > 0.01) {
+                std::cout << "reloc_initT: " << reloc_initT << std::endl;
+                if (!initT_flag) {
+                    initialized = false;
+                    imu_only_ready = false;
+                    p_imu->reset();
+                    p_imu->set_init_pose(reloc_initT, prior_R);
+                    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+                    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+                    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+                    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+                    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+                    initT_flag = true;
+                }
+                if (p_imu->imu_need_init_) {
+                    /// The very first lidar frame
+                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
+                    return;
+                }
+                {
+                    while (!initialized) {
+                        initializing_pose = true;
+                        initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+                        if (init_num > 15) {
+                            initT_flag = false;
+                            std::cout << "init failed, reset" << std::endl;
+                            initializing_pose = false;
+                            return;
+                        }
+                    }
+                    initializing_pose = false;
+                    init_num = 0;
+                }
+                need_reloc = false;
+                return;
+            }
         }
 
         /*** iterated state estimation ***/
@@ -1214,9 +1234,8 @@ int main(int argc, char **argv)
   std::thread mainThread(&mainProcessThread);
   mainThread.detach();
 
-  ros::Subscriber sub_pcl = p_lidar->lidar_type == AVIA
-                                ? nh.subscribe(lid_topic, 2, livox_pcl_cbk)
-                                : nh.subscribe(lid_topic, 2, standard_pcl_cbk);
+  ros::Subscriber sub_pcl = p_lidar->lidar_type == AVIA ? nh.subscribe(lid_topic, 1, livox_pcl_cbk)
+                                                        : nh.subscribe(lid_topic, 1, standard_pcl_cbk);
   ros::Subscriber sub_imu = nh.subscribe(imu_topic, 200000, imu_cbk);
   ros::Subscriber sub_reloc = nh.subscribe(reloc_topic, 200000, reloc_cbk);
   ros::Subscriber sub_mode = nh.subscribe(mode_topic, 200000, mode_cbk);
