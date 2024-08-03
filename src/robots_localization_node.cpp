@@ -505,7 +505,8 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
 void reloc_cbk(const RobotCommand::ConstPtr &msg_in)
 {
   mtx_buffer.lock();
-  V3F tmp_pos << msg_in->target_position_x, msg_in->target_position_y, msg_in->target_position_z;
+  V3F tmp_pos;
+  tmp_pos << msg_in->target_position_x, msg_in->target_position_y, msg_in->target_position_z;
   if (msg_in->commd_keyboard == 82 && (tmp_pos - reloc_initT).norm() > 0.1) {
       need_reloc = true;
       reloc_initT = tmp_pos;
