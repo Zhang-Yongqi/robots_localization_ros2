@@ -1,6 +1,6 @@
 common:
-    lid_topic: "/livox/lidar"
-    imu_topic: "/livox/imu"
+    lid_topic: "/unilidar/cloud"
+    imu_topic: "/unilidar/imu"
     reloc_topic: "/slaver/robot_command"
     mode_topic: "/slaver/robot_status"
     time_sync_en: false # ONLY turn on when external time synchronization is really not possible
@@ -9,10 +9,12 @@ common:
         # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
 preprocess:
-    lidar_type: 1 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
-    scan_line: 4
+    lidar_type: 4 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR,
+    scan_line: 16
     blind: 2 
+    timestamp_unit: 0 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
     point_filter_num: 1
+    scan_rate: 10
 
 mapping: # 建图和定位参数
     mapping_en: false # 是否开启建图功能
@@ -23,7 +25,7 @@ mapping: # 建图和定位参数
     fov_degree: 360.0
     det_range: 100.0
     extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
-    extrinsic_T: [-0.011, -0.0234, 0.044] # DJI给的
+    extrinsic_T: [0.007698, 0.014655, -0.00667]
     extrinsic_R: [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
 publish:

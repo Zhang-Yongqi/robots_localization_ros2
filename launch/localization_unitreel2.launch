@@ -3,9 +3,9 @@
 
     <arg name="rviz" default="true" />
 
-    <rosparam command="load" file="$(find robots_localization)/config/mid360.yaml" />
+    <rosparam command="load" file="$(find robots_localization)/config/unitreel2.yaml" />
 
-    <param name="pcd_path" type="string" value="$(find robots_localization)/PCD/2024-11-20_20-07-47_scans.pcd" />
+    <param name="pcd_path" type="string" value="$(find robots_localization)/PCD/2024-11-24_19-24-09_scans.pcd" />
     <!-- add param for manual select map pcd file -->
     <node pkg="robots_localization" type="robots_localization" name="robots_localization" output="screen" /> 
 
