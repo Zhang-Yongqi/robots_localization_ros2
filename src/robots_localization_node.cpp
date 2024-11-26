@@ -66,7 +66,7 @@ int NUM_MAX_ITERATIONS = 0;
 int effct_feat_num = 0, time_log_counter = 0, scan_count = 0, publish_count = 0, pcd_save_interval = -1;
 int feats_down_size = 0;
 
-bool need_reloc = false, imu_only_ready = false, initT_flag = true;
+bool need_reloc = false, imu_only_ready = false, initT_flag = false;
 int init_num = 0;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT(Zero3f);
@@ -962,35 +962,75 @@ void mainProcess() {
         }
         ROS_ASSERT(Measures.lidar != nullptr);
 
+        // 重定位
+        if (need_reloc && !mapping_en) {
+            if (reloc_initT.norm() > 0.1) {
+                if (!initT_flag) {
+                    std::cout << "!!!!!!!!!start relocalization!!!!!!!!!" << std::endl;
+                    std::cout << "reloc_initT: " << reloc_initT << std::endl;
+                    initialized = false;
+                    imu_only_ready = false;
+                    p_imu->reset();
+                    p_imu->set_init_pose(reloc_initT, prior_R);
+                    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+                    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+                    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+                    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+                    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+                    initT_flag = true;
+                }
+                if (p_imu->imu_need_init_) {
+                    /// The very first lidar frame
+                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
+                    return;
+                }
+                {
+                    while (!initialized) {
+                        initializing_pose = true;
+                        initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+                        if (init_num > 15) {
+                            initT_flag = false;
+                            std::cout << "init failed, reset" << std::endl;
+                            initializing_pose = false;
+                            return;
+                        }
+                    }
+                    initT_flag = false;
+                    initializing_pose = false;
+                    init_num = 0;
+                }
+                need_reloc = false;
+                return;
+            }
+        }
+
         if (p_imu->imu_need_init_) {
             /// The very first lidar frame
             p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
             return;
         }
 
-        {
-            // 初始化位姿
-            while (!initialized) {
-                initializing_pose = true;
-                initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
-                init_num += 1;
-                if (init_num > 15) {
-                    p_imu->reset();
-                    p_imu->set_init_pose(prior_T, prior_R);
-                    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-                    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-                    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-                    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-                    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-                    std::cout << "init failed, reset" << std::endl;
-                    initializing_pose = false;
-                    return;
-                }
+        // 初始化位姿
+        while (!initialized) {
+            initializing_pose = true;
+            initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
+            init_num += 1;
+            if (init_num > 15) {
+                p_imu->reset();
+                p_imu->set_init_pose(prior_T, prior_R);
+                p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
+                p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
+                p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
+                p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
+                p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
+                std::cout << "init failed, reset" << std::endl;
+                initializing_pose = false;
+                return;
             }
-            initializing_pose = false;
-            init_num = 0;
-            sig_buffer.notify_all();
         }
+        initializing_pose = false;
+        init_num = 0;
+        sig_buffer.notify_all();
 
         // 对IMU数据进行预处理，其中包含了前向传播、点云畸变处理
         // feats_undistort 为畸变纠正之后的点云,lidar系
@@ -1029,47 +1069,7 @@ void mainProcess() {
             return;
         }
 
-        // 重定位
-        if (need_reloc && !mapping_en) {
-            std::cout << "!!!!!!!!!start relocalization!!!!!!!!!" << std::endl;
-            if (reloc_initT.norm() > 0.01) {
-                std::cout << "reloc_initT: " << reloc_initT << std::endl;
-                if (!initT_flag) {
-                    initialized = false;
-                    imu_only_ready = false;
-                    p_imu->reset();
-                    p_imu->set_init_pose(reloc_initT, prior_R);
-                    p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
-                    p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
-                    p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
-                    p_imu->set_gyr_bias_cov(V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov));
-                    p_imu->set_acc_bias_cov(V3D(b_acc_cov, b_acc_cov, b_acc_cov));
-                    initT_flag = true;
-                }
-                if (p_imu->imu_need_init_) {
-                    /// The very first lidar frame
-                    p_imu->imu_init(Measures, kf, p_imu->init_iter_num);
-                    return;
-                }
-                {
-                    while (!initialized) {
-                        initializing_pose = true;
-                        initialized = p_imu->init_pose(Measures, kf, global_map, ikdtree, YAW_RANGE);
-                        if (init_num > 15) {
-                            initT_flag = false;
-                            std::cout << "init failed, reset" << std::endl;
-                            initializing_pose = false;
-                            return;
-                        }
-                    }
-                    initializing_pose = false;
-                    init_num = 0;
-                }
-                need_reloc = false;
-                return;
-            }
-        }
-
+        
         /*** iterated state estimation ***/
         normvec->resize(feats_down_size);
         feats_down_world->resize(feats_down_size);
