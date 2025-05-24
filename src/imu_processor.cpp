@@ -214,7 +214,6 @@ bool IMUProcessor::init_pose(const MeasureGroup& meas, esekfom::esekf<state_ikfo
       M4F prior_with_yaw = lidar_pose_last;
       std::pair<float, float> result;
       result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
-      // result = ScanAligner::init_gicp_method(prior_with_yaw, meas.lidar, map);
       error_min = result.first;
       validP_max = result.second;
       prior_with_min_error = prior_with_yaw;
@@ -238,19 +237,10 @@ bool IMUProcessor::init_pose(const MeasureGroup& meas, esekfom::esekf<state_ikfo
         prior_with_yaw.block<3, 1>(0, 3) = lidar_pose_last.block<3, 1>(0, 3);
         prior_with_yaw.block<3, 3>(0, 0) = rotation_yaw * lidar_pose_last.block<3, 3>(0, 0);
 
-        // if (method == "ICP") {
-        //   error = init_icp_method(kdtree, meas.lidar, prior_with_yaw);
-        // }
-        // else if (method == "PPICP") {
         result = ScanAligner::init_ppicp_method(kdtree, meas.lidar, prior_with_yaw);
         error = result.first;
         validP = result.second;
-        // }
-        // else
-        // {
-        //   std::cerr << "Not valid method!" << std::endl;
-        //   return false;
-        // }
+
 #ifdef MP_EN
 #pragma omp critical
 #endif

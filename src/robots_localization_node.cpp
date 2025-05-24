@@ -192,25 +192,13 @@ void loadConfig(const ros::NodeHandle& nh)
   nh.param<bool>("runtime_pos_log_enable", runtime_pos_log, 0);
 
   nh.param<string>("init_method", p_imu->method, "PPICP");
-  if (p_imu->method == "NDT")
-  {
-  }
-  else if (p_imu->method == "ICP")
-  {
-    nh.param<int>("ICP/max_iter", ScanAligner::max_iter, 10);
-  }
-  else if (p_imu->method == "PPICP")
-  {
-    nh.param<float>("PPICP/plane_dist", ScanAligner::plane_dist, 0.1);
-    nh.param<int>("PPICP/max_iter", ScanAligner::max_iter, 10);
-  }
-  else if (p_imu->method == "GICP")
-  {
-    nh.param<int>("GICP/max_iter", ScanAligner::max_iter, 10);
-  }
-  else
-  {
-    std::cerr << "Not valid init method!" << std::endl;
+  if (p_imu->method == "ICP") {
+      nh.param<int>("ICP/max_iter", ScanAligner::max_iter, 10);
+  } else if (p_imu->method == "PPICP") {
+      nh.param<float>("PPICP/plane_dist", ScanAligner::plane_dist, 0.1);
+      nh.param<int>("PPICP/max_iter", ScanAligner::max_iter, 10);
+  } else {
+      std::cerr << "Not valid init method!" << std::endl;
   }
   nh.param<vector<float>>("prior/prior_T", priorT, vector<float>(3, 0.0));
   nh.param<vector<float>>("prior/prior_R", priorR, vector<float>(9, 0.0));
