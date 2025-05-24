@@ -1,12 +1,3 @@
-/*
- * @Author: 陈熠琳 1016598572@qq.com
- * @Date: 2023-06-24 19:20:59
- * @LastEditors: 陈熠琳 1016598572@qq.com
- * @LastEditTime: 2023-06-24 19:24:38
- * @FilePath: /rm_sentry_localization_2023/src/imu_processor.h
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
-
 #pragma once
 
 #include <common_lib.h>
@@ -15,7 +6,6 @@
 #include <time.h>
 
 #include <chrono>
-#include <filesystem>
 #include <fstream>
 #include <sophus/so3.hpp>
 
@@ -32,82 +22,77 @@ const bool time_list(PointType &x, PointType &y);
 
 class IMUProcessor
 {
-public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  IMUProcessor();
+    IMUProcessor();
 
-  ~IMUProcessor();
+    ~IMUProcessor();
 
-  void reset();
+    void reset();
 
-  void set_init_pose(const V3F &poseT, const M3F &poseR);
+    void set_init_pose(const V3F &poseT, const M3F &poseR);
 
-  void set_extrinsic(const V3D &transl, const M3D &rot);
+    void set_extrinsic(const V3D &transl, const M3D &rot);
 
-  void set_extrinsic(const V3D &transl);
+    void set_extrinsic(const V3D &transl);
 
-  void set_extrinsic(const MD(4, 4) & T);
+    void set_extrinsic(const MD(4, 4) & T);
 
-  void set_gyr_cov(const V3D &scaler);
+    void set_gyr_cov(const V3D &scaler);
 
-  void set_acc_cov(const V3D &scaler);
+    void set_acc_cov(const V3D &scaler);
 
-  void set_gyr_bias_cov(const V3D &b_g);
+    void set_gyr_bias_cov(const V3D &b_g);
 
-  void set_acc_bias_cov(const V3D &b_a);
+    void set_acc_bias_cov(const V3D &b_a);
 
-  void imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
+    void imu_init(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, int &N);
 
-  bool init_pose(const MeasureGroup &meas,
-                 esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-                 PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree,
-                 vector<float> &YAW_RANGE);
+    bool init_pose(const MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
+                   PointCloudXYZI::Ptr map, KD_TREE<PointType> &kdtree, vector<float> &YAW_RANGE);
 
-  void process(const MeasureGroup &meas,
-               esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state,
-               PointCloudXYZI &pcl_out);
+    void process(MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out);
 
-  bool process_imu_only(const sensor_msgs::Imu::Ptr imu_data,
-                        esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
+    bool process_imu_only(const sensor_msgs::Imu::Ptr imu_data, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
 
-  Eigen::Matrix<double, 12, 12> Q;
-  V3D cov_acc;
-  V3D cov_gyr;
-  V3D cov_acc_scale;
-  V3D cov_gyr_scale;
-  V3D cov_bias_gyr;
-  V3D cov_bias_acc;
+    Eigen::Matrix<double, 12, 12> Q;
+    V3D cov_acc;
+    V3D cov_gyr;
+    V3D cov_acc_scale;
+    V3D cov_gyr_scale;
+    V3D cov_bias_gyr;
+    V3D cov_bias_acc;
 
-  double first_lidar_time;
+    double first_lidar_time;
 
-  string method;
-  bool estimateGrav = true;
-  bool mapping_en = false;
+    string method;
+    bool estimateGrav = true;
+    bool mapping_en = false;
 
-  string timeStr;
+    string timeStr;
 
-  bool imu_need_init_;
-  int init_iter_num;
+    bool imu_need_init_;
+    int init_iter_num;
 
- private:
-  sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
-  vector<Pose6D> IMUpose;
-  V3D acc_s_last, angvel_last;
-  double last_lidar_end_time_;
+    M3F gravR;
 
-  M3D Lidar_R_wrt_IMU;
-  V3D Lidar_T_wrt_IMU;
+  private:
+    sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
+    vector<Pose6D> IMUpose;
+    V3D acc_s_last, angvel_last;
+    double last_lidar_end_time_;
 
-  bool find_yaw;
-  M4F init_pose_curr;
-  M4F init_pose_last;
-  bool b_first_frame_;
-  V3D mean_acc;
-  V3D mean_gyr;
-  M3F gravR;
+    M3D Lidar_R_wrt_IMU;
+    V3D Lidar_T_wrt_IMU;
 
-  std::ofstream fout_init;
+    bool find_yaw;
+    M4F lidar_pose_last;
+    M4F init_pose_curr;
+    M4F init_pose_last;
+    bool b_first_frame_;
+    V3D mean_acc;
+    V3D mean_gyr;
+
+    std::ofstream fout_init;
 };
-
-
