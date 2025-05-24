@@ -11,7 +11,7 @@ typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 
 // 枚举类型：表示支持的雷达类型
-enum LID_TYPE { AVIA = 1, VELO16, OUST64, UNIL2 };  //{1, 2, 3, 4}
+enum LID_TYPE { AVIA = 1, VELO16, OUST64, UNIL2, RS };  //{1, 2, 3, 4, 5}
 // 枚举类型：表示时间的单位
 enum TIME_UNIT { SEC = 0, MS = 1, US = 2, NS = 3 };
 // 枚举类型：表示特征点的类型
@@ -46,6 +46,19 @@ struct orgtype {
     intersect = 2;
   }
 };
+
+namespace rslidar_ros {
+struct Point {
+    PCL_ADD_POINT4D;
+    std::uint8_t intensity;
+    uint16_t ring = 0;
+    double timestamp = 0;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+}  // namespace rslidar_ros
+POINT_CLOUD_REGISTER_POINT_STRUCT(rslidar_ros::Point,
+                                  (float, x, x)(float, y, y)(float, z, z)(uint8_t, intensity, intensity)(
+                                      uint16_t, ring, ring)(double, timestamp, timestamp))
 
 namespace unilidar_ros {
 struct Point {
@@ -122,6 +135,7 @@ class LidarProcessor {
   PointCloudXYZI pl_buff[128];  // maximum 128 line lidar
 
  private:
+  void rs_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
