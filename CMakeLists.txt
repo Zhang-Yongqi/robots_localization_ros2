@@ -63,14 +63,13 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   pcl_ros
   tf
-  livox_ros_driver
   message_generation
   eigen_conversions
   nlink_parser
 )
 
 find_package(Eigen3 REQUIRED)
-find_package(PCL 1.8 REQUIRED)
+find_package(PCL REQUIRED)
 find_package(Sophus REQUIRED)
 find_package(Ceres REQUIRED)
 
@@ -91,6 +90,7 @@ include_directories(
 add_message_files(
   FILES
   Pose6D.msg
+  CustomMsg.msg
 )
 
 generate_messages(
@@ -148,9 +148,4 @@ imu_processor
 lidar_processor
 monitor
 )
-
-
-
-# add_executable(transform_map src/transform_map.cpp)
-# target_link_libraries(transform_map ${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES})
 
