@@ -120,7 +120,7 @@ class LidarProcessor {
   LidarProcessor();
   ~LidarProcessor();
 
-  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const robots_localization::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg,
                PointCloudXYZI::Ptr &pcl_out);
 
@@ -136,7 +136,7 @@ class LidarProcessor {
 
  private:
   void rs_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
-  void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
+  void avia_handler(const robots_localization::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void unilidar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);

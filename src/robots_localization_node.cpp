@@ -452,42 +452,39 @@ void map_incremental()
 double timediff_lidar_wrt_imu = 0.0;  // lidar imu 时间差
 bool timediff_set_flg = false;        // 是否已经计算了时间差
 // livox激光雷达回调函数
-void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr& msg)
-{
-  if (initializing_pose)
-  {
-    return;
-  }
-  mtx_buffer.lock();
-  scan_count++;
-  if (msg->header.stamp.toSec() < last_timestamp_lidar)
-  {
-    ROS_ERROR("lidar loop back, clear buffer");
-    lidar_buffer.clear();
-  }
-  last_timestamp_lidar = msg->header.stamp.toSec();
+void livox_pcl_cbk(const robots_localization::CustomMsg::ConstPtr& msg) {
+    if (initializing_pose) {
+        return;
+    }
+    mtx_buffer.lock();
+    scan_count++;
+    if (msg->header.stamp.toSec() < last_timestamp_lidar) {
+        ROS_ERROR("lidar loop back, clear buffer");
+        lidar_buffer.clear();
+    }
+    last_timestamp_lidar = msg->header.stamp.toSec();
 
-  // time_sync_en时间同步关闭，imu和lidar时间差>10，两个buffer都不为空，就输出
-  if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 && !imu_buffer.empty() &&
-      !lidar_buffer.empty())
-  {
-    printf("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf", last_timestamp_imu, last_timestamp_lidar);
-  }
-  // 如果是同一个时间系统，正常情况下不会相差大于1s（不是同一个时间系统）
-  if (time_sync_en && !timediff_set_flg && abs(last_timestamp_lidar - last_timestamp_imu) > 1 && !imu_buffer.empty())
-  {
-    timediff_set_flg = true;
-    timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
-    printf("Self sync IMU and LiDAR, time diff is % .10lf ", timediff_lidar_wrt_imu);
-  }
+    // time_sync_en时间同步关闭，imu和lidar时间差>10，两个buffer都不为空，就输出
+    if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 10.0 && !imu_buffer.empty() &&
+        !lidar_buffer.empty()) {
+        printf("IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf", last_timestamp_imu,
+               last_timestamp_lidar);
+    }
+    // 如果是同一个时间系统，正常情况下不会相差大于1s（不是同一个时间系统）
+    if (time_sync_en && !timediff_set_flg && abs(last_timestamp_lidar - last_timestamp_imu) > 1 &&
+        !imu_buffer.empty()) {
+        timediff_set_flg = true;
+        timediff_lidar_wrt_imu = last_timestamp_lidar + 0.1 - last_timestamp_imu;
+        printf("Self sync IMU and LiDAR, time diff is % .10lf ", timediff_lidar_wrt_imu);
+    }
 
-  PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
-  p_lidar->process(msg, ptr);  // 数据格式转换
-  lidar_buffer.push_back(ptr);
-  time_buffer.push_back(last_timestamp_lidar);
+    PointCloudXYZI::Ptr ptr(new PointCloudXYZI());
+    p_lidar->process(msg, ptr);  // 数据格式转换
+    lidar_buffer.push_back(ptr);
+    time_buffer.push_back(last_timestamp_lidar);
 
-  mtx_buffer.unlock();
-  sig_buffer.notify_all();
+    mtx_buffer.unlock();
+    sig_buffer.notify_all();
 }
 
 // 标准雷达回调函数
