@@ -5,7 +5,7 @@
 
     <rosparam command="load" file="$(find robots_localization)/config/mid360.yaml" />
 
-    <param name="pcd_path" type="string" value="$(find robots_localization)/PCD/2024-11-20_20-07-47_scans.pcd" />
+    <param name="pcd_path" type="string" value="$(find robots_localization)/PCD/2025-04-22_13-21-05_scans.pcd" />
     <!-- add param for manual select map pcd file -->
     <node pkg="robots_localization" type="robots_localization" name="robots_localization" output="screen" /> 
 

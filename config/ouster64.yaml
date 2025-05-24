@@ -1,8 +1,6 @@
 common:
     lid_topic: "/ouster/points"
     imu_topic: "/ouster/imu"
-    reloc_topic: "/slaver/robot_command"
-    mode_topic: "/slaver/robot_status"
     time_sync_en: false # ONLY turn on when external time synchronization is really not possible
     time_offset_lidar_to_imu:
         0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
@@ -31,9 +29,12 @@ mapping: # 建图和定位参数
 publish:
     path_en: true
     imu2robot_T: [0, 0, 0] # 机器人坐标系下imu的位置
+    imu2robot_R: [1, 0, 0,
+                  0, 1, 0,
+                  0, 0, 1] # imu系下机器人的姿态
     scan_publish_en: true # false: close all the point cloud output
     dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
-    scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame
+    scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
 pcd_save:
     pcd_save_en: false
@@ -42,20 +43,13 @@ pcd_save:
         # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
 max_iteration: 3
-filter_size_surf: 0.2 #建图0.05
-filter_size_map: 0.05
+filter_size_surf: 0.2
+filter_size_map: 0.15
 cube_side_length: 1000
 runtime_pos_log_enable: true
-# init_method: PPICP
-# GICP:
-# ICP:
-#     max_iter: 10
-# PPICP:
-#     plane_dist: 0.1
-#     max_iter: 10
+
 prior:
-    red_prior_T: [3.5,8.5,0.2]
-    blue_prior_T: [3.5,8.5,0.2]
+    prior_T: [0 ,0, 0]
     prior_R: [1 ,0, 0,
               0 ,1, 0,
               0 ,0, 1]
