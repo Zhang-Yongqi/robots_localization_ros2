@@ -41,6 +41,11 @@
     ```bash
     sudo apt install ccache
     ```
+- ceres
+  
+    ```bash
+    sudo apt install libceres-dev
+    ```
 
 ## Tips
 
