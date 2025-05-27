@@ -46,8 +46,8 @@ void IMUProcessor::reset()
   angvel_last = Zero3d;
   init_iter_num = 1;
   IMUpose.clear();
-  last_imu_.reset(new sensor_msgs::Imu());
-  last_imu_only_.reset(new sensor_msgs::Imu());
+  last_imu_.reset(new sensor_msgs::msg::Imu());
+  last_imu_only_.reset(new sensor_msgs::msg::Imu());
   Q = process_noise_cov();
   b_first_frame_ = true;
   find_yaw = false;
@@ -146,7 +146,7 @@ void IMUProcessor::imu_init(const MeasureGroup& meas, esekfom::esekf<state_ikfom
 
     cov_acc = cov_acc_scale;
     cov_gyr = cov_gyr_scale;
-    ROS_INFO("IMU Initial Done");
+    // ROS_INFO("IMU Initial Done");
 
     V3F initPoseT = V3F::Zero();
     M3F initPoseR = M3F::Zero();
@@ -337,19 +337,20 @@ bool IMUProcessor::init_pose(const MeasureGroup& meas, esekfom::esekf<state_ikfo
     /**********************************************************************/
     kf_state.change_P(init_P);
 
-    ROS_INFO(
-        "Initialization Done: pos: %.4f %.4f %.4f"
-        "Gravity: %.4f %.4f %.4f %.4f; "
-        "mean_acc: %.4f %.4f %.4f; "
-        "mean_gyr: %.4f %.4f %.4f; "
-        "bias_acc covariance: %.4f %.4f %.4f; "
-        "bias_gyr covariance: %.4f %.4f %.4f; "
-        "acc covarience: %.8f %.8f %.8f; "
-        "gyr covarience: %.8f %.8f %.8f",
-        imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1], imu_state.grav[2],
-        mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0], mean_gyr[1], mean_gyr[2], cov_bias_acc[0],
-        cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0], cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1],
-        cov_acc[2], cov_gyr[0], cov_gyr[1], cov_gyr[2]);
+    // ROS_INFO(
+    //     "Initialization Done: pos: %.4f %.4f %.4f"
+    //     "Gravity: %.4f %.4f %.4f %.4f; "
+    //     "mean_acc: %.4f %.4f %.4f; "
+    //     "mean_gyr: %.4f %.4f %.4f; "
+    //     "bias_acc covariance: %.4f %.4f %.4f; "
+    //     "bias_gyr covariance: %.4f %.4f %.4f; "
+    //     "acc covarience: %.8f %.8f %.8f; "
+    //     "gyr covarience: %.8f %.8f %.8f",
+    //     imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1],
+    //     imu_state.grav[2], mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0],
+    //     mean_gyr[1], mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0],
+    //     cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
+    //     cov_gyr[2]);
     fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", " << imu_state.pos[2]
               << std::endl
               << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", " << imu_state.grav[2] << std::endl
@@ -376,7 +377,7 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
   {
     return;
   }
-  ROS_ASSERT(meas.lidar != nullptr);
+  // ROS_ASSERT(meas.lidar != nullptr);
 
   /********* zero velocity update **********/
   if (USE_ZUPT && check_zupt(zupt_imu_buffer, recent_avg_acc, recent_avg_gyr))
@@ -384,15 +385,18 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
     opt_with_zupt = true;
     kf_state.update_iterated_dyn_share();  // zupt 更新
     opt_with_zupt = false;
-    ROS_INFO("zupt!! recent_avg_acc: %f, %f, %f, recent_avg_gyr: %f, %f, %f", recent_avg_acc[0], recent_avg_acc[1],
-             recent_avg_acc[2], recent_avg_gyr[0], recent_avg_gyr[1], recent_avg_gyr[2]);
+    // ROS_INFO("zupt!! recent_avg_acc: %f, %f, %f, recent_avg_gyr: %f, %f, %f", recent_avg_acc[0],
+    // recent_avg_acc[1],
+    //          recent_avg_acc[2], recent_avg_gyr[0], recent_avg_gyr[1], recent_avg_gyr[2]);
   }
 
   /*** add the imu of the last frame-tail to the of current frame-head ***/
   auto v_imu = meas.imu;
   v_imu.push_front(last_imu_);
-  const double& imu_beg_time = v_imu.front()->header.stamp.toSec();
-  const double& imu_end_time = v_imu.back()->header.stamp.toSec();
+  const double& imu_beg_time = static_cast<double>(v_imu.front()->header.stamp.sec) +
+                               static_cast<double>(v_imu.front()->header.stamp.nanosec) * 1e-9;
+  const double& imu_end_time = static_cast<double>(v_imu.back()->header.stamp.sec) +
+                               static_cast<double>(v_imu.back()->header.stamp.nanosec) * 1e-9;
   const double& pcl_beg_time = meas.lidar_beg_time;
   const double& pcl_end_time = meas.lidar_end_time;
 
@@ -422,169 +426,170 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
   {
     auto&& head = *(it_imu);
     auto&& tail = *(it_imu + 1);
-    if (tail->header.stamp.toSec() < last_lidar_end_time_)
-      continue;
+    double time_tail_uwb =
+        static_cast<double>(tail->header.stamp.sec) + static_cast<double>(tail->header.stamp.nanosec) * 1e-9;
+    if (time_tail_uwb < last_lidar_end_time_) continue;
 
     /*** update by uwb meas ***/
     if (USE_UWB && !meas.uwb.empty())
     {
       std::pair<double, std::vector<UWBObservation>> cur_uwb_meas =
           meas.uwb.front();  // 最新帧UWB测量 <时间戳，多个基站的ID及距离>
-      if (cur_uwb_meas.first < head->header.stamp.toSec())
-      {
-        meas.uwb.pop_front();
-      }
-      else
-      {
-        if (cur_uwb_meas.first < tail->header.stamp.toSec())  // uwb 位于两个imu之间 TODO: 考虑时间对齐
-        {
-          sensor_msgs::Imu mid_imu;
-          interpolate_imu(head, tail, cur_uwb_meas.first, mid_imu);
-          // 将mid_imu的数据赋值给tail，如果不考虑时间复杂度，可直接insert插值后的imu到v_imu中
-          sensor_msgs::Imu::Ptr new_tail = boost::make_shared<sensor_msgs::Imu>(mid_imu);
-          sensor_msgs::Imu::Ptr new_head = boost::make_shared<sensor_msgs::Imu>(mid_imu);
-
-          // 进行中值积分预测
-          angvel_avr << 0.5 * (head->angular_velocity.x + new_tail->angular_velocity.x),
-              0.5 * (head->angular_velocity.y + new_tail->angular_velocity.y),
-              0.5 * (head->angular_velocity.z + new_tail->angular_velocity.z);
-          acc_avr << 0.5 * (head->linear_acceleration.x + new_tail->linear_acceleration.x),
-              0.5 * (head->linear_acceleration.y + new_tail->linear_acceleration.y),
-              0.5 * (head->linear_acceleration.z + new_tail->linear_acceleration.z);
-
-          // 通过重力数值对加速度进行一下微调
-          acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
-
-          // 如果IMU开始时刻早于上次雷达最晚时刻(因为将上次最后一个IMU插入到此次开头了，所以会出现这种情况)
-          if (head->header.stamp.toSec() < last_lidar_end_time_)
-          {
-            dt = new_tail->header.stamp.toSec() - last_lidar_end_time_;
-          }
-          else
-          {
-            dt = new_tail->header.stamp.toSec() - head->header.stamp.toSec();
-          }
-          fout_init << "dt: " << dt << std::endl;
-
-          // 原始测量的中值作为输入
-          in.acc = acc_avr;
-          in.gyro = angvel_avr;
-          // 过程噪声协方差矩阵
-          Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
-          Q.block<3, 3>(3, 3).diagonal() = cov_acc;
-          Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
-          Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
-          if (dt < 0.1)  // fastlio2里没有该判断
-          {
-            kf_state.predict(dt, Q, in);
-          }
-
-          // 如果有uwb基站初始化完成，则进行状态更新
-          if (has_inited_anchor_in_cur_meas(cur_uwb_meas.second))
-          {
-            opt_with_uwb = true;
-            kf_state.update_iterated_dyn_share();  // uwb 更新
-            // ROS_WARN("uwb update !");
-            ROS_INFO("calib td: %f", imu_state.td[0]);
-            ROS_INFO("calib bias: %f %f %f %f", imu_state.anchor1[4], imu_state.anchor2[4], imu_state.anchor3[4],
-                     imu_state.anchor4[4]);
-            ROS_INFO("calib_offset: %f %f %f", imu_state.offset_T_I_U[0], imu_state.offset_T_I_U[1],
-                     imu_state.offset_T_I_U[2]);
-            opt_with_uwb = false;
-          }
-
-          // 对没有完成初始化的uwb基站收集数据并尝试初始化
-          imu_state = kf_state.get_x();
-          V3D tag_pos = imu_state.pos + imu_state.rot * imu_state.offset_T_I_U;
-          for (const auto& meas : cur_uwb_meas.second)
-          {
-            if (!anchor_map[meas.anchor_id].initialized)
-            {
-              if (anchor_map[meas.anchor_id].curr_group_meet_calib_condition())
-                anchor_map[meas.anchor_id].reset_trajectory();
-
-              if (!anchor_map[meas.anchor_id].all_group_meet_calib_condition())
-                anchor_map[meas.anchor_id].add_measurement(tag_pos, meas.distance);
-
-              // 使用离线标定的UWB基站坐标，只需采集一小段时间数据计算bias进行初始化
-              if (use_calibrated_anchor)
-              {
-                if (try_to_initialize_bias(anchor_map[meas.anchor_id]))
-                {
-                  ROS_INFO("uwb anchor %d initialized!!! bias: %f", meas.anchor_id, anchor_map[meas.anchor_id].bias);
-                  switch (meas.anchor_id)
-                  {
-                    case 1:
-                      imu_state.anchor1[4] = anchor_map[meas.anchor_id].bias;
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 2:
-                      imu_state.anchor2[4] = anchor_map[meas.anchor_id].bias;
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 3:
-                      imu_state.anchor3[4] = anchor_map[meas.anchor_id].bias;
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 4:
-                      imu_state.anchor4[4] = anchor_map[meas.anchor_id].bias;
-                      kf_state.change_x(imu_state);
-                      break;
-                    default:
-                      break;
-                  }
-                }
-              }
-              // 进行UWB基站坐标及bias的初始化
-              else
-              {
-                if (try_to_initialize_anchor(anchor_map[meas.anchor_id]))
-                {
-                  Eigen::VectorXd inited_anchor(5);
-                  inited_anchor.head<3>() = anchor_map[meas.anchor_id].position;
-                  inited_anchor[3] = 1.0;
-                  inited_anchor[4] = anchor_map[meas.anchor_id].bias;
-                  ROS_INFO("uwb anchor %d initialized!!! position: [%f, %f, %f], bias: %f", meas.anchor_id,
-                           inited_anchor[0], inited_anchor[1], inited_anchor[2], inited_anchor[4]);
-                  fout_uwb_calib << "====================================================================="
-                                 << std::endl;
-                  fout_uwb_calib << "uwb anchor " << meas.anchor_id << " initialized !!!" << std::endl;
-                  fout_uwb_calib << "position: [" << inited_anchor[0] << ", " << inited_anchor[1] << ", "
-                                 << inited_anchor[2] << "], bias: " << inited_anchor[4] << std::endl;
-                  fout_uwb_calib << "=====================================================================\n"
-                                 << std::endl;
-                  switch (meas.anchor_id)
-                  {
-                    case 1:
-                      imu_state.anchor1 = vect5(inited_anchor);
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 2:
-                      imu_state.anchor2 = vect5(inited_anchor);
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 3:
-                      imu_state.anchor3 = vect5(inited_anchor);
-                      kf_state.change_x(imu_state);
-                      break;
-                    case 4:
-                      imu_state.anchor4 = vect5(inited_anchor);
-                      kf_state.change_x(imu_state);
-                      break;
-                    default:
-                      break;
-                  }
-                }
-              }
-            }
-          }
+      double time_head_uwb = static_cast<double>(head->header.stamp.sec) +
+                             static_cast<double>(head->header.stamp.nanosec) * 1e-9;
+      if (cur_uwb_meas.first < time_head_uwb) {
           meas.uwb.pop_front();
+      } else {
+          if (cur_uwb_meas.first < time_tail_uwb)  // uwb 位于两个imu之间 TODO: 考虑时间对齐
+          {
+              sensor_msgs::msg::Imu mid_imu;
+              interpolate_imu(head, tail, cur_uwb_meas.first, mid_imu);
+              // 将mid_imu的数据赋值给tail，如果不考虑时间复杂度，可直接insert插值后的imu到v_imu中
+              sensor_msgs::msg::Imu::ConstSharedPtr new_tail =
+                  std::make_shared<sensor_msgs::msg::Imu>(mid_imu);
+              sensor_msgs::msg::Imu::ConstSharedPtr new_head =
+                  std::make_shared<sensor_msgs::msg::Imu>(mid_imu);
 
-          // 将mid_imu的数据赋值给head，并对it_imu--
-          *it_imu = new_head;
-          it_imu--;
-          continue;
-        }
+              // 进行中值积分预测
+              angvel_avr << 0.5 * (head->angular_velocity.x + new_tail->angular_velocity.x),
+                  0.5 * (head->angular_velocity.y + new_tail->angular_velocity.y),
+                  0.5 * (head->angular_velocity.z + new_tail->angular_velocity.z);
+              acc_avr << 0.5 * (head->linear_acceleration.x + new_tail->linear_acceleration.x),
+                  0.5 * (head->linear_acceleration.y + new_tail->linear_acceleration.y),
+                  0.5 * (head->linear_acceleration.z + new_tail->linear_acceleration.z);
+
+              // 通过重力数值对加速度进行一下微调
+              acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
+
+              // 如果IMU开始时刻早于上次雷达最晚时刻(因为将上次最后一个IMU插入到此次开头了，所以会出现这种情况)
+              double time_head = static_cast<double>(head->header.stamp.sec) +
+                                 static_cast<double>(head->header.stamp.nanosec) * 1e-9;
+              double time_new_tail = static_cast<double>(new_tail->header.stamp.sec) +
+                                     static_cast<double>(new_tail->header.stamp.nanosec) * 1e-9;
+              if (time_head < last_lidar_end_time_) {
+                  dt = time_new_tail - last_lidar_end_time_;
+              } else {
+                  dt = time_new_tail - time_head;
+              }
+              fout_init << "dt: " << dt << std::endl;
+
+              // 原始测量的中值作为输入
+              in.acc = acc_avr;
+              in.gyro = angvel_avr;
+              // 过程噪声协方差矩阵
+              Q.block<3, 3>(0, 0).diagonal() = cov_gyr;
+              Q.block<3, 3>(3, 3).diagonal() = cov_acc;
+              Q.block<3, 3>(6, 6).diagonal() = cov_bias_gyr;
+              Q.block<3, 3>(9, 9).diagonal() = cov_bias_acc;
+              if (dt < 0.1)  // fastlio2里没有该判断
+              {
+                  kf_state.predict(dt, Q, in);
+              }
+
+              // 如果有uwb基站初始化完成，则进行状态更新
+              if (has_inited_anchor_in_cur_meas(cur_uwb_meas.second)) {
+                  opt_with_uwb = true;
+                  kf_state.update_iterated_dyn_share();  // uwb 更新
+                  // ROS_WARN("uwb update !");
+                  // ROS_INFO("calib td: %f", imu_state.td[0]);
+                  // ROS_INFO("calib bias: %f %f %f %f", imu_state.anchor1[4], imu_state.anchor2[4],
+                  // imu_state.anchor3[4],
+                  //          imu_state.anchor4[4]);
+                  // ROS_INFO("calib_offset: %f %f %f", imu_state.offset_T_I_U[0], imu_state.offset_T_I_U[1],
+                  //          imu_state.offset_T_I_U[2]);
+                  opt_with_uwb = false;
+              }
+
+              // 对没有完成初始化的uwb基站收集数据并尝试初始化
+              imu_state = kf_state.get_x();
+              V3D tag_pos = imu_state.pos + imu_state.rot * imu_state.offset_T_I_U;
+              for (const auto& meas : cur_uwb_meas.second) {
+                  if (!anchor_map[meas.anchor_id].initialized) {
+                      if (anchor_map[meas.anchor_id].curr_group_meet_calib_condition())
+                          anchor_map[meas.anchor_id].reset_trajectory();
+
+                      if (!anchor_map[meas.anchor_id].all_group_meet_calib_condition())
+                          anchor_map[meas.anchor_id].add_measurement(tag_pos, meas.distance);
+
+                      // 使用离线标定的UWB基站坐标，只需采集一小段时间数据计算bias进行初始化
+                      if (use_calibrated_anchor) {
+                          if (try_to_initialize_bias(anchor_map[meas.anchor_id])) {
+                              // ROS_INFO("uwb anchor %d initialized!!! bias: %f", meas.anchor_id,
+                              //  anchor_map[meas.anchor_id].bias);
+                              switch (meas.anchor_id) {
+                                  case 1:
+                                      imu_state.anchor1[4] = anchor_map[meas.anchor_id].bias;
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 2:
+                                      imu_state.anchor2[4] = anchor_map[meas.anchor_id].bias;
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 3:
+                                      imu_state.anchor3[4] = anchor_map[meas.anchor_id].bias;
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 4:
+                                      imu_state.anchor4[4] = anchor_map[meas.anchor_id].bias;
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  default:
+                                      break;
+                              }
+                          }
+                      }
+                      // 进行UWB基站坐标及bias的初始化
+                      else {
+                          if (try_to_initialize_anchor(anchor_map[meas.anchor_id])) {
+                              Eigen::VectorXd inited_anchor(5);
+                              inited_anchor.head<3>() = anchor_map[meas.anchor_id].position;
+                              inited_anchor[3] = 1.0;
+                              inited_anchor[4] = anchor_map[meas.anchor_id].bias;
+                              // ROS_INFO("uwb anchor %d initialized!!! position: [%f, %f, %f], bias: %f",
+                              //  meas.anchor_id, inited_anchor[0], inited_anchor[1], inited_anchor[2],
+                              //  inited_anchor[4]);
+                              fout_uwb_calib << "==================================================="
+                                                "=================="
+                                             << std::endl;
+                              fout_uwb_calib << "uwb anchor " << meas.anchor_id << " initialized !!!"
+                                             << std::endl;
+                              fout_uwb_calib << "position: [" << inited_anchor[0] << ", " << inited_anchor[1]
+                                             << ", " << inited_anchor[2] << "], bias: " << inited_anchor[4]
+                                             << std::endl;
+                              fout_uwb_calib << "==================================================="
+                                                "==================\n"
+                                             << std::endl;
+                              switch (meas.anchor_id) {
+                                  case 1:
+                                      imu_state.anchor1 = vect5(inited_anchor);
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 2:
+                                      imu_state.anchor2 = vect5(inited_anchor);
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 3:
+                                      imu_state.anchor3 = vect5(inited_anchor);
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  case 4:
+                                      imu_state.anchor4 = vect5(inited_anchor);
+                                      kf_state.change_x(imu_state);
+                                      break;
+                                  default:
+                                      break;
+                              }
+                          }
+                      }
+                  }
+              }
+              meas.uwb.pop_front();
+
+              // 将mid_imu的数据赋值给head，并对it_imu--
+              *it_imu = new_head;
+              it_imu--;
+              continue;
+          }
       }
     }
 
@@ -600,13 +605,14 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
     acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
 
     // 如果IMU开始时刻早于上次雷达最晚时刻(因为将上次最后一个IMU插入到此次开头了，所以会出现这种情况)
-    if (head->header.stamp.toSec() < last_lidar_end_time_)
-    {
-      dt = tail->header.stamp.toSec() - last_lidar_end_time_;
-    }
-    else
-    {
-      dt = tail->header.stamp.toSec() - head->header.stamp.toSec();
+    double time_head =
+        static_cast<double>(head->header.stamp.sec) + static_cast<double>(head->header.stamp.nanosec) * 1e-9;
+    double time_tail =
+        static_cast<double>(tail->header.stamp.sec) + static_cast<double>(tail->header.stamp.nanosec) * 1e-9;
+    if (time_head < last_lidar_end_time_) {
+        dt = time_tail - last_lidar_end_time_;
+    } else {
+        dt = time_tail - time_head;
     }
     fout_init << "dt: " << dt << std::endl;
 
@@ -631,7 +637,7 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
     {
       acc_s_last[i] += imu_state.grav[i];
     }
-    double&& offs_t = tail->header.stamp.toSec() - pcl_beg_time;
+    double&& offs_t = time_tail - pcl_beg_time;
     IMUpose.push_back(
         set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.toRotationMatrix()));
   }
@@ -726,40 +732,42 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
   }
 }
 
-bool IMUProcessor::process_imu_only(const sensor_msgs::Imu::Ptr imu_data,
-                                    esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state)
-{
-  /*** Initialize IMU pose ***/
-  state_ikfom imu_state = kf_state.get_x_imu();
+bool IMUProcessor::process_imu_only(const sensor_msgs::msg::Imu::Ptr imu_data,
+                                    esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state) {
+    /*** Initialize IMU pose ***/
+    state_ikfom imu_state = kf_state.get_x_imu();
 
-  /*** forward propagation at each imu point ***/
-  V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
-  M3D R_imu;
-  double dt = 0;
-  input_ikfom in;
+    /*** forward propagation at each imu point ***/
+    V3D angvel_avr, acc_avr, acc_imu, vel_imu, pos_imu;
+    M3D R_imu;
+    double dt = 0;
+    input_ikfom in;
 
-  angvel_avr << 0.5 * (last_imu_only_->angular_velocity.x + imu_data->angular_velocity.x),
-      0.5 * (last_imu_only_->angular_velocity.y + imu_data->angular_velocity.y),
-      0.5 * (last_imu_only_->angular_velocity.z + imu_data->angular_velocity.z);
-  acc_avr << 0.5 * (last_imu_only_->linear_acceleration.x + imu_data->linear_acceleration.x),
-      0.5 * (last_imu_only_->linear_acceleration.y + imu_data->linear_acceleration.y),
-      0.5 * (last_imu_only_->linear_acceleration.z + imu_data->linear_acceleration.z);
+    angvel_avr << 0.5 * (last_imu_only_->angular_velocity.x + imu_data->angular_velocity.x),
+        0.5 * (last_imu_only_->angular_velocity.y + imu_data->angular_velocity.y),
+        0.5 * (last_imu_only_->angular_velocity.z + imu_data->angular_velocity.z);
+    acc_avr << 0.5 * (last_imu_only_->linear_acceleration.x + imu_data->linear_acceleration.x),
+        0.5 * (last_imu_only_->linear_acceleration.y + imu_data->linear_acceleration.y),
+        0.5 * (last_imu_only_->linear_acceleration.z + imu_data->linear_acceleration.z);
 
-  // 通过重力数值对加速度进行一下微调
-  acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
+    // 通过重力数值对加速度进行一下微调
+    acc_avr = acc_avr * G_m_s2 / mean_acc.norm();
 
-  dt = imu_data->header.stamp.toSec() - last_imu_only_->header.stamp.toSec();
-  in.acc = acc_avr;
-  in.gyro = angvel_avr;
-  if (dt < 0.1)
-  {
-    kf_state.predict_imu_only(dt, in);
-  }
+    double time_1 = static_cast<double>(imu_data->header.stamp.sec) +
+                    static_cast<double>(imu_data->header.stamp.nanosec) * 1e-9;
+    double time_2 = static_cast<double>(last_imu_only_->header.stamp.sec) +
+                    static_cast<double>(last_imu_only_->header.stamp.nanosec) * 1e-9;
+    dt = time_1 - time_2;
+    in.acc = acc_avr;
+    in.gyro = angvel_avr;
+    if (dt < 0.1) {
+        kf_state.predict_imu_only(dt, in);
+    }
 
-  /* save the poses at each IMU measurements */
-  imu_state = kf_state.get_x_imu();
-  last_imu_only_ = imu_data;
+    /* save the poses at each IMU measurements */
+    imu_state = kf_state.get_x_imu();
+    last_imu_only_ = imu_data;
 
-  return true;
+    return true;
 }
 #pragma clang diagnostic pop

@@ -1,108 +1,110 @@
-common:
-    lid_topic: "/rslidar_points"
-    imu_topic: "/rslidar_imu_data"
-    time_sync_en: false # ONLY turn on when external time synchronization is really not possible
-    time_offset_lidar_to_imu:
-        0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
-        # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
+RobotsLocalizationNode:
+    ros__parameters:
+        common:
+            lid_topic: "/rslidar_points"
+            imu_topic: "/rslidar_imu_data"
+            time_sync_en: false # ONLY turn on when external time synchronization is really not possible
+            time_offset_lidar_to_imu:
+                0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
+                # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
-preprocess:
-    lidar_type: 5 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for Unitree, 5 for RS
-    scan_line: 144
-    blind: 2 
-    timestamp_unit: 0 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-    point_filter_num: 2
-    scan_rate: 10
+        preprocess:
+            lidar_type: 5 # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 4 for Unitree, 5 for RS
+            scan_line: 144
+            blind: 1.0 
+            timestamp_unit: 0 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
+            point_filter_num: 3
+            scan_rate: 10
 
-mapping: # 建图和定位参数
-    mapping_en: true # 是否开启建图功能
-    acc_cov: 0.1
-    gyr_cov: 0.1
-    b_acc_cov: 0.0001
-    b_gyr_cov: 0.0001
-    fov_degree: 120.0
-    det_range: 100.0
-    extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
-    extrinsic_T: [ 0.0042744, -0.0157518, -0.011212]
-    extrinsic_R: [0, -1, 0, 0, 0, 1, -1, 0, 0]
+        mapping: # 建图和定位参数
+            mapping_en: true # 是否开启建图功能
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 120.0
+            det_range: 100.0
+            extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
+            extrinsic_T: [ 0.0042744, -0.0157518, -0.011212]
+            extrinsic_R: [0.0, -1.0, 0.0, 0.0, 0.0, 1.0, -1.0, 0.0, 0.0]
 
-publish:
-    path_en: true
-    imu2robot_T: [0, 0, 0] # imu系下机器人的位置
-    imu2robot_R: [0, -1, 0,
-                  0, 0, 1,
-                  -1, 0, 0] # imu系下机器人的姿态
-    scan_publish_en: true # false: close all the point cloud output
-    dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
-    scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
+        publish:
+            path_en: true
+            imu2robot_T: [0.0, 0.0, 0.0] # imu系下机器人的位置
+            imu2robot_R: [0.0, -1.0, 0.0,
+                          0.0, 0.0, 1.0,
+                          -1.0, 0.0, 0.0] # imu系下机器人的姿态
+            scan_publish_en: true # false: close all the point cloud output
+            dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
+            scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
-pcd_save:
-    pcd_save_en: false
-    interval:
-        -1 # how many LiDAR frames saved in each pcd file;
-        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+        pcd_save:
+            pcd_save_en: false
+            interval:
+                -1 # how many LiDAR frames saved in each pcd file;
+                # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
 
-max_iteration: 3
-filter_size_surf: 0.08 # 建图0.08
-filter_size_map: 0.05
-cube_side_length: 1000
-runtime_pos_log_enable: true
+        max_iteration: 3
+        filter_size_surf: 0.1 # 建图0.08
+        filter_size_map: 0.15
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: true
 
-prior:
-    prior_T: [0 ,0, 0]
-    estimateGrav: true
-    prior_R: [1 ,0, 0,
-              0 ,1, 0,
-              0 ,0, 1]
+        prior:
+            prior_T: [0.0 ,0.0, 0.0]
+            estimateGrav: true
+            prior_R: [1.0 ,0.0, 0.0,
+                      0.0 ,1.0, 0.0,
+                      0.0 ,0.0, 1.0]
 
-uwb:
-    use_uwb: true
-    uwb_topic: "/linktrack2/nlink_linktrack_nodeframe2"
-    mocap_topic: "/mavros/vision_pose/pose02"
-    log_mocap_traj: false     # 记录动捕的轨迹
-    log_fusion_traj: false     # 记录融合定位的轨迹
-    
-    # UWB观测更新参数
-    esti_uwb_scale: false       # 是否估计测距尺度因子
-    esti_uwb_bias: true        # 是否估计测距偏置
-    esti_uwb_offset: true      # 是否估计uwb与imu的平移外参
-    esti_uwb_anchor: false      # 是否估计anchor坐标
-    estimate_td: true
-    td: 0.020                   # t_UWB = t_IMU + td，单位:s
-    td_std: 0.010               # td的标准差，单位:s
-    uwb_range_std: 0.2
-    uwb_chi2_threshold: 20.0   # 卡方表，DoF1, 95%接受
+        uwb:
+            use_uwb: false
+            uwb_topic: "/linktrack2/nlink_linktrack_nodeframe2"
+            mocap_topic: "/mavros/vision_pose/pose02"
+            log_mocap_traj: false     # 记录动捕的轨迹
+            log_fusion_traj: false     # 记录融合定位的轨迹
 
-    # UWB基站初始化参数
-    uwb2imuT: [0.18, 0.01, -0.10]                            # IMU^p_UWB，即UWB标签在IMU系下的坐标
-    tag_move_threshold: 0.000                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
-    offline_calib_data_num: 3000                             # 初始化基站，至少需要多少帧数据
-    offline_calib_move_3d_threshold: [10.0, 5.0, 3.0]        # 离线标定需要三轴分别运动多少里程，注：采集标定数据时一定要缓慢移动传感器平台！！！！
-    offline_calib_maxmin_3d_threshold: [4.0, 2.0, 1.0]       # 离线标定需要三轴坐标极差达到多少
-    near_measure_dist_threshold: 2.0                         # 近距离测量距离阈值
-    near_measure_num_threshold: 200                          # 近距离测量数目阈值
-    constrain_bias: true                                     # 是否约束bias在一定范围内，TODO： 坐标也可以约束一下？？？
-    bias_limit: 0.8                                          # 先验可知bias一般都在正负0.8m以内，甚至0-0.8m之间？因为多路径效应只会让传播距离变长
-    calib_data_group_num: 3                                  # 用来标定的数据组数，单组数据可以完成标定，多组数据可用来做一致性验证
-    consistent_threshold: 0.5                                # 三轴误差均不超过0.5m认为多组数据标定具有一致性
-    init_bias_data_num: 500                                  # 已知离线标定基站坐标基础上，标定测距偏置需要多少帧数据
-    online_calib_move_3d_threshold: [10.0, 10.0, 2.0]        # 在线标定需要三轴分别运动多少里程
-    ransac_sample_num: 100                                   # RANSAC采样内点数进行拟合
-    ransac_average_error_threshold: 0.10                     # RANSAC内点平均测距误差小于0.03m，停止迭代
-    use_calibrated_anchor: true                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
-    calibrated_anchor1: [3.3618, -2.3243, 0.761323]          # 标定过的anchor坐标，地图系下
-    calibrated_anchor2: [3.97303, 0.41742, 0.738834]
-    calibrated_anchor3: [-2.74201, -1.32873, 0.780843]
-    calibrated_anchor4: [-3.64372, 3.76237, 0.552984]
+            # UWB观测更新参数
+            esti_uwb_scale: false       # 是否估计测距尺度因子
+            esti_uwb_bias: true        # 是否估计测距偏置
+            esti_uwb_offset: true      # 是否估计uwb与imu的平移外参
+            esti_uwb_anchor: false      # 是否估计anchor坐标
+            estimate_td: true
+            td: 0.020                   # t_UWB = t_IMU + td，单位:s
+            td_std: 0.010               # td的标准差，单位:s
+            uwb_range_std: 0.2
+            uwb_chi2_threshold: 20.0   # 卡方表，DoF1, 95%接受
 
-zupt:
-    use_zupt: true
-    zupt_duration: 2.0
-    zupt_imu_data_num: 20
-    zupt_max_acc_std: 0.02          # 单位:g,即Livox加计原始单位
-    zupt_max_gyr_std: 0.02
-    zupt_max_gyr_median: 0.02
-    zupt_gyr_std: 0.01
-    zupt_vel_std: 0.01
-    zupt_acc_std: 0.01
-    zupt_chi2_threshold: 1.635      # DoF-6, 如果加上acc约束则DoF-8
+            # UWB基站初始化参数
+            uwb2imuT: [0.18, 0.01, -0.10]                            # IMU^p_UWB，即UWB标签在IMU系下的坐标
+            tag_move_threshold: 0.000                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
+            offline_calib_data_num: 3000                             # 初始化基站，至少需要多少帧数据
+            offline_calib_move_3d_threshold: [10.0, 5.0, 3.0]        # 离线标定需要三轴分别运动多少里程，注：采集标定数据时一定要缓慢移动传感器平台！！！！
+            offline_calib_maxmin_3d_threshold: [4.0, 2.0, 1.0]       # 离线标定需要三轴坐标极差达到多少
+            near_measure_dist_threshold: 2.0                         # 近距离测量距离阈值
+            near_measure_num_threshold: 200                          # 近距离测量数目阈值
+            constrain_bias: true                                     # 是否约束bias在一定范围内，TODO： 坐标也可以约束一下？？？
+            bias_limit: 0.8                                          # 先验可知bias一般都在正负0.8m以内，甚至0-0.8m之间？因为多路径效应只会让传播距离变长
+            calib_data_group_num: 3                                  # 用来标定的数据组数，单组数据可以完成标定，多组数据可用来做一致性验证
+            consistent_threshold: 0.5                                # 三轴误差均不超过0.5m认为多组数据标定具有一致性
+            init_bias_data_num: 500                                  # 已知离线标定基站坐标基础上，标定测距偏置需要多少帧数据
+            online_calib_move_3d_threshold: [10.0, 10.0, 2.0]        # 在线标定需要三轴分别运动多少里程
+            ransac_sample_num: 100                                   # RANSAC采样内点数进行拟合
+            ransac_average_error_threshold: 0.10                     # RANSAC内点平均测距误差小于0.03m，停止迭代
+            use_calibrated_anchor: true                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
+            calibrated_anchor1: [3.3618, -2.3243, 0.761323]          # 标定过的anchor坐标，地图系下
+            calibrated_anchor2: [3.97303, 0.41742, 0.738834]
+            calibrated_anchor3: [-2.74201, -1.32873, 0.780843]
+            calibrated_anchor4: [-3.64372, 3.76237, 0.552984]
+
+        zupt:
+            use_zupt: false
+            zupt_duration: 2.0
+            zupt_imu_data_num: 20
+            zupt_max_acc_std: 0.02          # 单位:g,即Livox加计原始单位
+            zupt_max_gyr_std: 0.02
+            zupt_max_gyr_median: 0.02
+            zupt_gyr_std: 0.01
+            zupt_vel_std: 0.01
+            zupt_acc_std: 0.01
+            zupt_chi2_threshold: 1.635      # DoF-6, 如果加上acc约束则DoF-8

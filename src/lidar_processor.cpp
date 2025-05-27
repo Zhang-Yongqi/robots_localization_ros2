@@ -8,14 +8,14 @@ LidarProcessor::~LidarProcessor()
 {
 }
 
-void LidarProcessor::process(const robots_localization::CustomMsg::ConstPtr &msg,
+void LidarProcessor::process(const robots_localization::msg::CustomMsg::ConstPtr &msg,
                              PointCloudXYZI::Ptr &pcl_out) {
     avia_handler(msg);
     *pcl_out = pl_surf;
 }
 
-void LidarProcessor::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
-{
+void LidarProcessor::process(const sensor_msgs::msg::PointCloud2::ConstPtr &msg,
+                             PointCloudXYZI::Ptr &pcl_out) {
     switch (time_unit)
     {
     case SEC:
@@ -56,8 +56,7 @@ void LidarProcessor::process(const sensor_msgs::PointCloud2::ConstPtr &msg, Poin
     *pcl_out = pl_surf;
 }
 
-void LidarProcessor::rs_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
-{
+void LidarProcessor::rs_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -156,8 +155,7 @@ void LidarProcessor::rs_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
     }
 }
 
-void LidarProcessor::unilidar_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
-{
+void LidarProcessor::unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -202,7 +200,7 @@ void LidarProcessor::unilidar_handler(const sensor_msgs::PointCloud2::ConstPtr &
     // std::endl;
 }
 
-void LidarProcessor::avia_handler(const robots_localization::CustomMsg::ConstPtr &msg) {
+void LidarProcessor::avia_handler(const robots_localization::msg::CustomMsg::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -247,8 +245,7 @@ void LidarProcessor::avia_handler(const robots_localization::CustomMsg::ConstPtr
     }
 }
 
-void LidarProcessor::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
-{
+void LidarProcessor::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
     // 清除点云缓存
     pl_surf.clear();
     pl_corn.clear();
@@ -262,7 +259,8 @@ void LidarProcessor::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &ms
     pl_surf.reserve(plsize); // 面特征点
     pl_full.resize(plsize);  // 全部点
 
-    double time_stamp = msg->header.stamp.toSec();
+    double time_stamp =
+        static_cast<double>(msg->header.stamp.sec) + static_cast<double>(msg->header.stamp.nanosec) * 1e-9;
     // 默认不进行特征提取
     for (int i = 0; i < pl_orig.points.size(); i++)
     {
@@ -290,8 +288,7 @@ void LidarProcessor::oust64_handler(const sensor_msgs::PointCloud2::ConstPtr &ms
     }
 }
 
-void LidarProcessor::velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg)
-{
+void LidarProcessor::velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();

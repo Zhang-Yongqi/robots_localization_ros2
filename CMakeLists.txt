@@ -1,21 +1,11 @@
-cmake_minimum_required(VERSION 3.0.2)
-
-#set(CMAKE_C_COMPILER "/usr/bin/gcc")
-#set(CMAKE_CXX_COMPILER "/usr/bin/g++")
-#set(CMAKE_C_COMPILER "/usr/bin/clang")
-#set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+cmake_minimum_required(VERSION 3.8)
 
 set(CMAKE_CXX_FLAGS "-std=c++17 -O3" )
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftime-trace")
 set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
-# set(CC "ccache gcc")
-# set(CXX "ccache g++")
 
 project(robots_localization)
-# set(CMAKE_CXX_COMPILER "/usr/bin/g++")
 
 set(CMAKE_BUILD_TYPE "Release")
-add_compile_options(-std=c++17 )
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
@@ -24,7 +14,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++0x -std=c++17 -fexceptions")
-# set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
@@ -52,31 +41,44 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 
 find_package(PythonLibs REQUIRED)
-#find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
+find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h")
 
-find_package(catkin REQUIRED COMPONENTS
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(pcl_ros REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(pcl_conversions REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+set(ROS2_DEPENDENCIES
+  rclcpp
+  rclcpp_components
   geometry_msgs
   nav_msgs
   sensor_msgs
-  roscpp
-  rospy
   std_msgs
+  std_srvs
+  visualization_msgs
   pcl_ros
-  tf
-  message_generation
-  eigen_conversions
-  nlink_parser
+  pcl_conversions
 )
 
+find_package(nlink_message REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common io)
 find_package(Sophus REQUIRED)
 find_package(Ceres REQUIRED)
 
 message(Eigen: ${EIGEN3_INCLUDE_DIR})
 
 include_directories(
-	${catkin_INCLUDE_DIRS} 
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   ${PYTHON_INCLUDE_DIRS}
@@ -87,41 +89,38 @@ include_directories(
   "src"
   )
 
-add_message_files(
-  FILES
-  Pose6D.msg
-  CustomPoint.msg
-  CustomMsg.msg
+set(MSG_FILES
+  "msg/Pose6D.msg"
+  "msg/CustomPoint.msg"
+  "msg/CustomMsg.msg"
 )
-
-generate_messages(
- DEPENDENCIES
- geometry_msgs
- std_msgs
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${MSG_FILES}
+  DEPENDENCIES builtin_interfaces std_msgs
 )
-
-catkin_package(
-  CATKIN_DEPENDS geometry_msgs nav_msgs roscpp rospy std_msgs message_runtime nlink_parser
-  DEPENDS EIGEN3 PCL
-  INCLUDE_DIRS
-)
-
-
+ament_export_dependencies(rosidl_default_runtime)
+rosidl_get_typesupport_target(cpp_typesupport_target
+${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 add_subdirectory(src)
 
-add_executable(robots_localization src/robots_localization_node.cpp)
+add_executable(robots_localization_node src/robots_localization_node.cpp)
+ament_target_dependencies(robots_localization_node ${ROS2_DEPENDENCIES} nlink_message)
 add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
 add_library(scan_aligner SHARED src/scan_aligner.cpp)
 add_library(imu_processor SHARED src/imu_processor.cpp)
 add_library(lidar_processor SHARED src/lidar_processor.cpp)
-target_link_libraries(imu_processor fmt ${catkin_LIBRARIES})
-target_link_libraries(scan_aligner fmt ${catkin_LIBRARIES})
+target_link_libraries(imu_processor fmt)
+ament_target_dependencies(imu_processor ${ROS2_DEPENDENCIES})
+target_link_libraries(scan_aligner fmt)
+ament_target_dependencies(scan_aligner ${ROS2_DEPENDENCIES})
+target_link_libraries(lidar_processor ${PCL_LIBRARIES})
+ament_target_dependencies(lidar_processor ${ROS2_DEPENDENCIES})
 
 add_executable(test_uwb_jacobian src/test_uwb_jacobian.cpp)
 
 # PCH头文件预编译
-target_precompile_headers(robots_localization PUBLIC
+target_precompile_headers(robots_localization_node PUBLIC
 src/scan_aligner.h
 src/imu_processor.h
 src/lidar_processor.h
@@ -141,9 +140,14 @@ include/IKFoM_toolkit/mtk/src/SubManifold.hpp
 include/IKFoM_toolkit/mtk/src/vectview.hpp
 )
 
-target_include_directories(robots_localization PRIVATE ${PYTHON_INCLUDE_DIRS})
-target_link_libraries(robots_localization 
-${catkin_LIBRARIES} ${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} ${CERES_LIBRARIES} fmt
+target_include_directories(robots_localization_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+  ${PCL_INCLUDE_DIRS}
+)
+target_include_directories(robots_localization_node PRIVATE ${PYTHON_INCLUDE_DIRS})
+target_link_libraries(robots_localization_node 
+${PCL_LIBRARIES} ${PYTHON_LIBRARIES} ${Sophus_LIBRARIES} ${CERES_LIBRARIES} fmt
 ikd_Tree
 scan_aligner
 imu_processor
@@ -151,3 +155,26 @@ lidar_processor
 monitor
 )
 
+target_link_libraries(robots_localization_node ${cpp_typesupport_target})
+target_link_libraries(lidar_processor ${cpp_typesupport_target})
+target_link_libraries(scan_aligner ${cpp_typesupport_target})
+target_link_libraries(imu_processor ${cpp_typesupport_target})
+
+install(TARGETS robots_localization_node
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS test_uwb_jacobian
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(TARGETS ikd_Tree scan_aligner imu_processor lidar_processor monitor
+  LIBRARY DESTINATION lib
+)
+
+install(
+  DIRECTORY config launch rviz
+  DESTINATION share/${PROJECT_NAME}
+)
+
+ament_package()

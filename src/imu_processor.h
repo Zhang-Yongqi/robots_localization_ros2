@@ -2,11 +2,11 @@
 
 #include <common_lib.h>
 #include <pcl/common/transforms.h>
-#include <sensor_msgs/Imu.h>
 #include <time.h>
 
 #include <chrono>
 #include <fstream>
+#include <sensor_msgs/msg/imu.hpp>
 #include <sophus/so3.hpp>
 
 #include "ikd-Tree/ikd_Tree.h"
@@ -54,7 +54,8 @@ class IMUProcessor
 
     void process(MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out);
 
-    bool process_imu_only(const sensor_msgs::Imu::Ptr imu_data, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
+    bool process_imu_only(const sensor_msgs::msg::Imu::Ptr imu_data,
+                          esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
 
     Eigen::Matrix<double, 12, 12> Q;
     V3D cov_acc;
@@ -78,21 +79,21 @@ class IMUProcessor
     M3F gravR;
 
   private:
-    sensor_msgs::ImuConstPtr last_imu_, last_imu_only_;
-    vector<Pose6D> IMUpose;
-    V3D acc_s_last, angvel_last;
-    double last_lidar_end_time_;
+   sensor_msgs::msg::Imu::ConstSharedPtr last_imu_, last_imu_only_;
+   vector<Pose6D> IMUpose;
+   V3D acc_s_last, angvel_last;
+   double last_lidar_end_time_;
 
-    M3D Lidar_R_wrt_IMU;
-    V3D Lidar_T_wrt_IMU;
+   M3D Lidar_R_wrt_IMU;
+   V3D Lidar_T_wrt_IMU;
 
-    bool find_yaw;
-    M4F lidar_pose_last;
-    M4F init_pose_curr;
-    M4F init_pose_last;
-    bool b_first_frame_;
-    V3D mean_acc;
-    V3D mean_gyr;
+   bool find_yaw;
+   M4F lidar_pose_last;
+   M4F init_pose_curr;
+   M4F init_pose_last;
+   bool b_first_frame_;
+   V3D mean_acc;
+   V3D mean_gyr;
 
-    std::ofstream fout_init;
+   std::ofstream fout_init;
 };

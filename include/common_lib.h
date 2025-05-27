@@ -1,24 +1,22 @@
 #ifndef COMMON_LIB_H
 #define COMMON_LIB_H
 
-#include <eigen_conversions/eigen_msg.h>
-#include <nav_msgs/Odometry.h>
+#include <ceres/ceres.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-#include <robots_localization/Pose6D.h>
-#include <sensor_msgs/Imu.h>
 #include <so3_math.h>
-#include <tf/transform_broadcaster.h>
 
 #include <Eigen/Eigen>
-
 #include <algorithm>
+#include <chrono>
+#include <deque>
 #include <fstream>
 #include <limits>
+#include <nav_msgs/msg/odometry.hpp>
 #include <random>
+#include <robots_localization/msg/pose6_d.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <unordered_map>
-
-#include <ceres/ceres.h>
 
 using namespace std;
 using namespace Eigen;
@@ -44,7 +42,7 @@ using namespace Eigen;
 
 namespace common_lib
 {
-typedef robots_localization::Pose6D Pose6D;
+typedef robots_localization::msg::Pose6D Pose6D;
 typedef pcl::PointXYZINormal PointType;
 typedef pcl::PointCloud<PointType> PointCloudXYZI;
 typedef vector<PointType, Eigen::aligned_allocator<PointType>> PointVector;
@@ -291,7 +289,7 @@ struct MeasureGroup  // Lidar data and imu dates for the curent process
   double lidar_beg_time;
   double lidar_end_time;
   PointCloudXYZI::Ptr lidar;
-  deque<sensor_msgs::Imu::ConstPtr> imu;
+  deque<sensor_msgs::msg::Imu::ConstPtr> imu;
   deque<std::pair<double, std::vector<UWBObservation>>> uwb;  // <时间戳，当前帧所有可用基站观测>
 };
 
@@ -457,7 +455,8 @@ void ransac_nonlinear_optimize_anchor(Eigen::Vector4d& anchor_estimate,
       score_min = score;
       best_estimate = local_estimate;
     }
-    ROS_INFO("RANSAC iteration: %d, Inlier measurements size: %d, Score: %f", iter, inlier_meas.size(), score);
+    // ROS_INFO("RANSAC iteration: %d, Inlier measurements size: %d, Score: %f", iter, inlier_meas.size(),
+    // score);
     fout_uwb_calib << "RANSAC iteration: " << iter << ", Inlier measurements size: " << inlier_meas.size()
                    << ", Score: " << score << std::endl;
 
@@ -544,17 +543,20 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
 
   for (int i = 0; i < calib_data_group_num; i++)
   {
-    ROS_INFO("traj[%d] data_num: %d, total_dist_3d: %f %f %f, maxmin_coor_3d: %f, %f, %f, near_measure_num: %d", i,
-             uwb_anchor.measurements[i].size(), uwb_anchor.total_dist_3d_history[i][0],
-             uwb_anchor.total_dist_3d_history[i][1], uwb_anchor.total_dist_3d_history[i][2],
-             uwb_anchor.maxmin_coor_3d_history[i][0], uwb_anchor.maxmin_coor_3d_history[i][1],
-             uwb_anchor.maxmin_coor_3d_history[i][2], uwb_anchor.near_measure_num_history[i]);
-    fout_uwb_calib << "traj[" << i << "] data_num: " << uwb_anchor.measurements[i].size()
-                   << ", total_dist_3d: " << uwb_anchor.total_dist_3d_history[i][0] << ", "
-                   << uwb_anchor.total_dist_3d_history[i][1] << ", " << uwb_anchor.total_dist_3d_history[i][2]
-                   << ", maxmin_coor_3d: " << uwb_anchor.maxmin_coor_3d_history[i][0] << ", "
-                   << uwb_anchor.maxmin_coor_3d_history[i][1] << ", " << uwb_anchor.maxmin_coor_3d_history[i][2]
-                   << ", near_measure_num : " << uwb_anchor.near_measure_num_history[i] << std::endl;
+      // ROS_INFO("traj[%d] data_num: %d, total_dist_3d: %f %f %f, maxmin_coor_3d: %f, %f, %f,
+      // near_measure_num: %d", i,
+      //          uwb_anchor.measurements[i].size(), uwb_anchor.total_dist_3d_history[i][0],
+      //          uwb_anchor.total_dist_3d_history[i][1], uwb_anchor.total_dist_3d_history[i][2],
+      //          uwb_anchor.maxmin_coor_3d_history[i][0], uwb_anchor.maxmin_coor_3d_history[i][1],
+      //          uwb_anchor.maxmin_coor_3d_history[i][2], uwb_anchor.near_measure_num_history[i]);
+      fout_uwb_calib << "traj[" << i << "] data_num: " << uwb_anchor.measurements[i].size()
+                     << ", total_dist_3d: " << uwb_anchor.total_dist_3d_history[i][0] << ", "
+                     << uwb_anchor.total_dist_3d_history[i][1] << ", "
+                     << uwb_anchor.total_dist_3d_history[i][2]
+                     << ", maxmin_coor_3d: " << uwb_anchor.maxmin_coor_3d_history[i][0] << ", "
+                     << uwb_anchor.maxmin_coor_3d_history[i][1] << ", "
+                     << uwb_anchor.maxmin_coor_3d_history[i][2]
+                     << ", near_measure_num : " << uwb_anchor.near_measure_num_history[i] << std::endl;
   }
 
   std::vector<Eigen::Vector4d> anchor_estimates(calib_data_group_num, Eigen::Vector4d::Zero());
@@ -578,39 +580,44 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
     bool last_group_logged = false;
     for (int i = 0; i < calib_data_group_num - 1; i++)
     {
-      ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, i, anchor_estimates[i][0],
-               anchor_estimates[i][1], anchor_estimates[i][2], anchor_estimates[i][3]);
-      fout_uwb_calib << "*********************************************************************" << std::endl;
-      fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << i << "] position: [" << anchor_estimates[i][0]
-                     << ", " << anchor_estimates[i][1] << ", " << anchor_estimates[i][2]
-                     << "], bias: " << anchor_estimates[i][3] << std::endl;
-      fout_uwb_calib << "*********************************************************************" << std::endl;
-      for (int j = i + 1; j < calib_data_group_num; j++)
-      {
-        if (j == calib_data_group_num - 1 && !last_group_logged)
-        {
-          ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, j, anchor_estimates[j][0],
-                   anchor_estimates[j][1], anchor_estimates[j][2], anchor_estimates[j][3]);
-          fout_uwb_calib << "*********************************************************************" << std::endl;
-          fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << j << "] position: ["
-                         << anchor_estimates[j][0] << ", " << anchor_estimates[j][1] << ", " << anchor_estimates[j][2]
-                         << "], bias: " << anchor_estimates[j][3] << std::endl;
-          fout_uwb_calib << "*********************************************************************" << std::endl;
-          last_group_logged = true;
+        // ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, i,
+        // anchor_estimates[i][0],
+        //          anchor_estimates[i][1], anchor_estimates[i][2], anchor_estimates[i][3]);
+        fout_uwb_calib << "*********************************************************************"
+                       << std::endl;
+        fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << i << "] position: ["
+                       << anchor_estimates[i][0] << ", " << anchor_estimates[i][1] << ", "
+                       << anchor_estimates[i][2] << "], bias: " << anchor_estimates[i][3] << std::endl;
+        fout_uwb_calib << "*********************************************************************"
+                       << std::endl;
+        for (int j = i + 1; j < calib_data_group_num; j++) {
+            if (j == calib_data_group_num - 1 && !last_group_logged) {
+                // ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, j,
+                // anchor_estimates[j][0],
+                //          anchor_estimates[j][1], anchor_estimates[j][2], anchor_estimates[j][3]);
+                fout_uwb_calib << "*********************************************************************"
+                               << std::endl;
+                fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << j << "] position: ["
+                               << anchor_estimates[j][0] << ", " << anchor_estimates[j][1] << ", "
+                               << anchor_estimates[j][2] << "], bias: " << anchor_estimates[j][3]
+                               << std::endl;
+                fout_uwb_calib << "*********************************************************************"
+                               << std::endl;
+                last_group_logged = true;
+            }
+            V3D diff = anchor_estimates[i].head<3>() - anchor_estimates[j].head<3>();
+            // ROS_INFO("traj[%d]-[%d] calib diff: %f, %f, %f", i, j, diff.x(), diff.y(), diff.z());
+            fout_uwb_calib << "traj[" << i << "]-[" << j << "] calib diff: " << diff.x() << ", " << diff.y()
+                           << ", " << diff.z() << std::endl;
+            if (diff.cwiseAbs().maxCoeff() > consistent_threshold) {
+                is_consistent = false;
+                // ROS_WARN("Inconsistent anchor estimates: diff > 0.5m between group %d and %d", i, j);
+                fout_uwb_calib << "Inconsistent anchor estimates: diff > 0.5m between group " << i << " and "
+                               << j << "\n\n"
+                               << std::endl;
+                break;
+            }
         }
-        V3D diff = anchor_estimates[i].head<3>() - anchor_estimates[j].head<3>();
-        ROS_INFO("traj[%d]-[%d] calib diff: %f, %f, %f", i, j, diff.x(), diff.y(), diff.z());
-        fout_uwb_calib << "traj[" << i << "]-[" << j << "] calib diff: " << diff.x() << ", " << diff.y() << ", "
-                       << diff.z() << std::endl;
-        if (diff.cwiseAbs().maxCoeff() > consistent_threshold)
-        {
-          is_consistent = false;
-          ROS_WARN("Inconsistent anchor estimates: diff > 0.5m between group %d and %d", i, j);
-          fout_uwb_calib << "Inconsistent anchor estimates: diff > 0.5m between group " << i << " and " << j << "\n\n"
-                         << std::endl;
-          break;
-        }
-      }
       if (!is_consistent)
         break;
     }
@@ -671,7 +678,7 @@ bool try_to_initialize_bias(UWBAnchor& uwb_anchor)
   int q3_idx = static_cast<int>((3 * n) / 4);
   double q1 = bias_meas[q1_idx];
   double q3 = bias_meas[q3_idx];
-  ROS_INFO("q1: %f, q3: %f, q0: %f, q4: %f", q1, q3, bias_meas[0], bias_meas.back());
+  // ROS_INFO("q1: %f, q3: %f, q0: %f, q4: %f", q1, q3, bias_meas[0], bias_meas.back());
   double iqr = q3 - q1;
   double lower_bound = q1 - 1.5 * iqr;
   double upper_bound = q3 + 1.5 * iqr;
@@ -686,9 +693,9 @@ bool try_to_initialize_bias(UWBAnchor& uwb_anchor)
 
   if (filtered_bias.empty())
   {
-    ROS_WARN("filtered_bias empty, calib bias failed!!!");
-    uwb_anchor.reset_measurements();
-    return false;
+      // ROS_WARN("filtered_bias empty, calib bias failed!!!");
+      uwb_anchor.reset_measurements();
+      return false;
   }
 
   double sum = 0.0;
@@ -795,30 +802,38 @@ bool check_zupt(const deque<IMU>& imu_data, V3D& average_acc, V3D& average_gyr)
   return true;
 }
 
-void interpolate_imu(sensor_msgs::Imu::ConstPtr head_imu, sensor_msgs::Imu::ConstPtr tail_imu, double mid_time,
-                     sensor_msgs::Imu& mid_imu)
-{
-  double t_head = head_imu->header.stamp.toSec();
-  double t_tail = tail_imu->header.stamp.toSec();
+void interpolate_imu(sensor_msgs::msg::Imu::ConstPtr head_imu, sensor_msgs::msg::Imu::ConstPtr tail_imu,
+                     double mid_time, sensor_msgs::msg::Imu& mid_imu) {
+    double t_head = static_cast<double>(head_imu->header.stamp.sec) +
+                    static_cast<double>(head_imu->header.stamp.nanosec) * 1e-9;
+    double t_tail = static_cast<double>(tail_imu->header.stamp.sec) +
+                    static_cast<double>(tail_imu->header.stamp.nanosec) * 1e-9;
 
-  double alpha = (mid_time - t_head) / (t_tail - t_head);
+    double alpha = (mid_time - t_head) / (t_tail - t_head);
 
-  mid_imu.header.stamp = ros::Time(mid_time);
-  mid_imu.header.frame_id = head_imu->header.frame_id;
+    int32_t sec = static_cast<int32_t>(mid_time);
+    uint32_t nanosec = static_cast<uint32_t>((mid_time - sec) * 1e9);
+    mid_imu.header.stamp.sec = sec;
+    mid_imu.header.stamp.nanosec = nanosec;
 
-  mid_imu.angular_velocity.x =
-      head_imu->angular_velocity.x + alpha * (tail_imu->angular_velocity.x - head_imu->angular_velocity.x);
-  mid_imu.angular_velocity.y =
-      head_imu->angular_velocity.y + alpha * (tail_imu->angular_velocity.y - head_imu->angular_velocity.y);
-  mid_imu.angular_velocity.z =
-      head_imu->angular_velocity.z + alpha * (tail_imu->angular_velocity.z - head_imu->angular_velocity.z);
+    mid_imu.header.frame_id = head_imu->header.frame_id;
 
-  mid_imu.linear_acceleration.x =
-      head_imu->linear_acceleration.x + alpha * (tail_imu->linear_acceleration.x - head_imu->linear_acceleration.x);
-  mid_imu.linear_acceleration.y =
-      head_imu->linear_acceleration.y + alpha * (tail_imu->linear_acceleration.y - head_imu->linear_acceleration.y);
-  mid_imu.linear_acceleration.z =
-      head_imu->linear_acceleration.z + alpha * (tail_imu->linear_acceleration.z - head_imu->linear_acceleration.z);
+    mid_imu.angular_velocity.x =
+        head_imu->angular_velocity.x + alpha * (tail_imu->angular_velocity.x - head_imu->angular_velocity.x);
+    mid_imu.angular_velocity.y =
+        head_imu->angular_velocity.y + alpha * (tail_imu->angular_velocity.y - head_imu->angular_velocity.y);
+    mid_imu.angular_velocity.z =
+        head_imu->angular_velocity.z + alpha * (tail_imu->angular_velocity.z - head_imu->angular_velocity.z);
+
+    mid_imu.linear_acceleration.x =
+        head_imu->linear_acceleration.x +
+        alpha * (tail_imu->linear_acceleration.x - head_imu->linear_acceleration.x);
+    mid_imu.linear_acceleration.y =
+        head_imu->linear_acceleration.y +
+        alpha * (tail_imu->linear_acceleration.y - head_imu->linear_acceleration.y);
+    mid_imu.linear_acceleration.z =
+        head_imu->linear_acceleration.z +
+        alpha * (tail_imu->linear_acceleration.z - head_imu->linear_acceleration.z);
 }
 
 struct StatesGroup
