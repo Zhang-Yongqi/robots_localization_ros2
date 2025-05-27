@@ -43,7 +43,7 @@ rclcpp::Subscription<nlink_message::msg::LinktrackNodeframe2>::SharedPtr sub_uwb
 rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_mocap;
 
 string root_dir = ROOT_DIR;
-string lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
+string ns, lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
 
 bool time_sync_en = false;
 bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false;
@@ -451,8 +451,8 @@ void imu_cbk(const sensor_msgs::msg::Imu::ConstPtr& msg_in) {
         last_timestamp_imu > last_timestamp_imu_back) {
         if (p_imu->process_imu_only(msg, kf)) {
             state_point_imu = kf.get_x_imu();
-            odomAftMappedIMU.header.frame_id = "camera_init";
-            odomAftMappedIMU.child_frame_id = "body";
+            odomAftMappedIMU.header.frame_id = "world";
+            odomAftMappedIMU.child_frame_id = ns;
             odomAftMappedIMU.header.stamp.sec = static_cast<int32_t>(last_timestamp_imu);
             double nanosec = last_timestamp_imu - odomAftMappedIMU.header.stamp.sec;
             odomAftMappedIMU.header.stamp.nanosec = static_cast<uint32_t>(nanosec * 1e9);
@@ -633,8 +633,8 @@ void set_posestamp(T& out) {
 
 // 通过pubOdomAftMapped发布位姿odomAftMapped，同时计算协方差存在kf中，同tf计算位姿
 void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr& pubOdomAftMapped) {
-    odomAftMapped.header.frame_id = "camera_init";
-    odomAftMapped.child_frame_id = "body";
+    odomAftMapped.header.frame_id = "world";
+    odomAftMapped.child_frame_id = ns;
     odomAftMapped.header.stamp.sec = static_cast<int32_t>(lidar_end_time);
     odomAftMapped.header.stamp.nanosec =
         static_cast<uint32_t>((lidar_end_time - odomAftMapped.header.stamp.sec) * 1e9);
@@ -656,9 +656,9 @@ void publish_odometry(const rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPt
     }
 
     geometry_msgs::msg::TransformStamped trans;
-    trans.header.frame_id = "camera_init";
+    trans.header.frame_id = "world";
     trans.header.stamp = odomAftMapped.header.stamp;
-    trans.child_frame_id = "body";
+    trans.child_frame_id = ns;
     trans.transform.translation.x = odomAftMapped.pose.pose.position.x;
     trans.transform.translation.y = odomAftMapped.pose.pose.position.y;
     trans.transform.translation.z = odomAftMapped.pose.pose.position.z;
@@ -691,8 +691,8 @@ void publish_path(const rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr& pubPa
     msg_body_pose.header.stamp.sec = static_cast<int32_t>(lidar_end_time);
     msg_body_pose.header.stamp.nanosec =
         static_cast<uint32_t>((lidar_end_time - msg_body_pose.header.stamp.sec) * 1e9);
-    msg_body_pose.header.frame_id = "camera_init";
-    path.header.frame_id = "camera_init";
+    msg_body_pose.header.frame_id = "world";
+    path.header.frame_id = "world";
 
     /*** if path is too large, the rvis will crash ***/
     static int jjj = 0;
@@ -717,7 +717,7 @@ void publish_frame_global(
     laserCloudmsg.header.stamp.sec = static_cast<int32_t>(lidar_end_time);
     laserCloudmsg.header.stamp.nanosec =
         static_cast<uint32_t>((lidar_end_time - laserCloudmsg.header.stamp.sec) * 1e9);
-    laserCloudmsg.header.frame_id = "camera_init";
+    laserCloudmsg.header.frame_id = "world";
     pubLaserCloudFull_global->publish(laserCloudmsg);
     publish_count -= PUBFRAME_PERIOD;
 }
@@ -737,7 +737,7 @@ void publish_frame_body(
     laserCloudmsg.header.stamp.sec = static_cast<int32_t>(lidar_end_time);
     laserCloudmsg.header.stamp.nanosec =
         static_cast<uint32_t>((lidar_end_time - laserCloudmsg.header.stamp.sec) * 1e9);
-    laserCloudmsg.header.frame_id = "body";
+    laserCloudmsg.header.frame_id = ns;
     pubLaserCloudFull_body->publish(laserCloudmsg);
     publish_count -= PUBFRAME_PERIOD;
 }
@@ -758,7 +758,7 @@ void publish_frame_world_local(
     laserCloudmsg.header.stamp.sec = static_cast<int32_t>(lidar_end_time);
     laserCloudmsg.header.stamp.nanosec =
         static_cast<uint32_t>((lidar_end_time - laserCloudmsg.header.stamp.sec) * 1e9);
-    laserCloudmsg.header.frame_id = "camera_init";
+    laserCloudmsg.header.frame_id = "world";
     pubLaserCloudFull_world->publish(laserCloudmsg);
     publish_count -= PUBFRAME_PERIOD;
 
@@ -1168,16 +1168,16 @@ class RobotsLocalizationNode : public rclcpp::Node {
         /*** ROS initialization ***/
 
         pubLaserCloudFull_global =
-            this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered", 20);
+            this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_registered", 20);
         pubLaserCloudFull_body =
-            this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_body", 20);
+            this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_registered_body", 20);
         pubLaserCloudFull_world =
-            this->create_publisher<sensor_msgs::msg::PointCloud2>("/cloud_registered_world", 20);
-        pubLaserCloudMap = this->create_publisher<sensor_msgs::msg::PointCloud2>("/laser_map", 20);
-        pubOdomAftMapped = this->create_publisher<nav_msgs::msg::Odometry>("/odometry", 20);
-        sub_pub_imu = this->create_publisher<nav_msgs::msg::Odometry>("/odometry_imu", 20);
-        pubIMUBias = this->create_publisher<geometry_msgs::msg::TwistStamped>("/IMU_bias", 20);
-        pubPath = this->create_publisher<nav_msgs::msg::Path>("/path", 20);
+            this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud_registered_world", 20);
+        pubLaserCloudMap = this->create_publisher<sensor_msgs::msg::PointCloud2>("laser_map", 20);
+        pubOdomAftMapped = this->create_publisher<nav_msgs::msg::Odometry>("odometry", 20);
+        sub_pub_imu = this->create_publisher<nav_msgs::msg::Odometry>("odometry_imu", 20);
+        pubIMUBias = this->create_publisher<geometry_msgs::msg::TwistStamped>("IMU_bias", 20);
+        pubPath = this->create_publisher<nav_msgs::msg::Path>("path", 20);
         tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
         signal(SIGINT, SigHandle);
@@ -1202,6 +1202,8 @@ class RobotsLocalizationNode : public rclcpp::Node {
     }
     void loadConfig() {
         // 参数加载
+        this->declare_parameter<std::string>("common.namespace", "robot_0");
+        ns = this->get_parameter("common.namespace").as_string();
         this->declare_parameter<std::string>("common.lid_topic", "/livox/lidar");
         lid_topic = this->get_parameter("common.lid_topic").as_string();
         this->declare_parameter<std::string>("common.imu_topic", "/livox/imu");

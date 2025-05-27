@@ -13,17 +13,16 @@ def generate_launch_description():
     return LaunchDescription(
         [
             Node(
+                namespace="robot_0",
                 package="robots_localization",
                 executable="robots_localization_node",
-                name="RobotsLocalizationNode",
-                parameters=[config, {'pcd_path': pcd_path}],
+                parameters=[config, {"pcd_path": pcd_path}],
                 output="screen",
             ),
             # Node(
             #     package="rviz2",
             #     executable="rviz2",
-            #     name="rviz2",
-            #     arguments=["-d", rviz_config], 
+            #     arguments=["-d", rviz_config],
             #     output="screen",
             # ),
         ]
