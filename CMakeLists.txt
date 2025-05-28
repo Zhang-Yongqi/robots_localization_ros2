@@ -5,7 +5,7 @@ set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
 project(robots_localization)
 
-set(CMAKE_BUILD_TYPE "Release")
+set(CMAKE_BUILD_TYPE "RelWithDebInfo")
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
@@ -173,7 +173,7 @@ install(TARGETS ikd_Tree scan_aligner imu_processor lidar_processor monitor
 )
 
 install(
-  DIRECTORY config launch rviz
+  DIRECTORY config launch rviz PCD
   DESTINATION share/${PROJECT_NAME}
 )
 
