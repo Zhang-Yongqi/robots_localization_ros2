@@ -15,6 +15,7 @@ float ScanAligner::plane_dist;
 std::pair<float, float> ScanAligner::init_icp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
                                                      M4F &predict_pose) {
     PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
+    scan->width = scan->points.size();
     int knn_num = 1;
     M3F rotation_matrix;
     V3F translation;
@@ -53,9 +54,6 @@ std::pair<float, float> ScanAligner::init_icp_method(KD_TREE<PointType> &kdtree,
             // 临近点距离的向量
             Eigen::Vector3f error_dist =
                 Eigen::Vector3f(trans_point.x, trans_point.y, trans_point.z) - closest_point;
-            whole_dist += (trans_point.x - closest_point[0]) * (trans_point.x - closest_point[0]),
-                (trans_point.y - closest_point[1]) * (trans_point.y - closest_point[1]),
-                (trans_point.z - closest_point[2]) * (trans_point.z - closest_point[2]);
 
             Eigen::Matrix<float, 3, 6> J(Eigen::Matrix<float, 3, 6>::Zero());
             J.block<3, 3>(0, 0) = Eigen::Matrix3f::Identity();
@@ -110,6 +108,7 @@ std::pair<float, float> ScanAligner::init_icp_method(KD_TREE<PointType> &kdtree,
 std::pair<float, float> ScanAligner::init_ppicp_method(KD_TREE<PointType> &kdtree, PointCloudXYZI::Ptr scan,
                                                        M4F &predict_pose) {
     PointCloudXYZI::Ptr trans_cloud(new PointCloudXYZI());
+    scan->width = scan->points.size();
     M3F rotation_matrix;
     V3F translation;
     rotation_matrix = predict_pose.block<3, 3>(0, 0);
