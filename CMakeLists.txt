@@ -1,19 +1,17 @@
 cmake_minimum_required(VERSION 3.8)
 
-set(CMAKE_CXX_FLAGS "-std=c++17 -O3" )
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -O3 -march=native -pthread -fexceptions -fPIC")
 set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
 project(robots_localization)
 
-set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+set(CMAKE_UNITY_BUILD ON)
+set(CMAKE_BUILD_TYPE "Release")
 
 add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fexceptions -fPIC" )
-set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++0x -std=c++17 -fexceptions")
 
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
@@ -121,9 +119,20 @@ add_executable(test_uwb_jacobian src/test_uwb_jacobian.cpp)
 
 # PCH头文件预编译
 target_precompile_headers(robots_localization_node PUBLIC
+<pcl/common/transforms.h>
+<pcl/filters/voxel_grid.h>
+<pcl/io/pcd_io.h>
+<geometry_msgs/msg/pose_stamped.hpp>
+<geometry_msgs/msg/transform_stamped.hpp>
+<geometry_msgs/msg/twist_stamped.hpp>
+<geometry_msgs/msg/vector3.hpp>
+<nav_msgs/msg/path.hpp>
+<sensor_msgs/msg/imu.hpp>
+<sensor_msgs/msg/point_cloud2.hpp>
 src/scan_aligner.h
 src/imu_processor.h
 src/lidar_processor.h
+src/robots_localization_node.h
 include/common_lib.h
 include/so3_math.h
 include/use-ikfom.h
