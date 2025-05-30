@@ -3,7 +3,6 @@
 #include <common_lib.h>
 #include <omp.h>
 #include <pcl/common/transforms.h>
-#include <pcl/search/kdtree.h>
 
 #include <fstream>
 #include <sophus/so3.hpp>

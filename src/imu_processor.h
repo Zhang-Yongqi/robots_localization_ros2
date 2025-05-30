@@ -79,7 +79,7 @@ class IMUProcessor
     M3F gravR;
 
   private:
-   sensor_msgs::msg::Imu::ConstSharedPtr last_imu_, last_imu_only_;
+   sensor_msgs::msg::Imu::ConstPtr last_imu_, last_imu_only_;
    vector<Pose6D> IMUpose;
    V3D acc_s_last, angvel_last;
    double last_lidar_end_time_;

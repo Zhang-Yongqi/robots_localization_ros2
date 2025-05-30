@@ -3,8 +3,8 @@ robot_0:
         ros__parameters:
             common:
                 namespace: "robot_0"
-                lid_topic: "/rslidar_points"
-                imu_topic: "/rslidar_imu_data"
+                lid_topic: "/robot_0/rslidar_points"
+                imu_topic: "/robot_0/rslidar_imu_data"
                 time_sync_en: false # ONLY turn on when external time synchronization is really not possible
                 time_offset_lidar_to_imu:
                     0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
@@ -15,11 +15,11 @@ robot_0:
                 scan_line: 144
                 blind: 1.0 
                 timestamp_unit: 0 # 0-second, 1-milisecond, 2-microsecond, 3-nanosecond.
-                point_filter_num: 3
+                point_filter_num: 1
                 scan_rate: 10
 
             mapping: # 建图和定位参数
-                mapping_en: true # 是否开启建图功能
+                mapping_en: false # 是否开启建图功能
                 acc_cov: 0.1
                 gyr_cov: 0.1
                 b_acc_cov: 0.0001
@@ -48,7 +48,7 @@ robot_0:
 
             max_iteration: 3
             filter_size_surf: 0.1 # 建图0.08
-            filter_size_map: 0.15
+            filter_size_map: 0.1
             cube_side_length: 1000.0
             runtime_pos_log_enable: true
 
@@ -61,7 +61,7 @@ robot_0:
 
             uwb:
                 use_uwb: false
-                uwb_topic: "/linktrack2/nlink_linktrack_nodeframe2"
+                uwb_topic: "/nlink_linktrack_nodeframe2"
                 mocap_topic: "/mavros/vision_pose/pose02"
                 log_mocap_traj: false     # 记录动捕的轨迹
                 log_fusion_traj: false     # 记录融合定位的轨迹
@@ -78,8 +78,8 @@ robot_0:
                 uwb_chi2_threshold: 20.0   # 卡方表，DoF1, 95%接受
 
                 # UWB基站初始化参数
-                uwb2imuT: [0.18, 0.01, -0.10]                            # IMU^p_UWB，即UWB标签在IMU系下的坐标
-                tag_move_threshold: 0.000                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
+                uwb2imuT: [0.03, 0.00, -0.10]                            # IMU^p_UWB，即UWB标签在IMU系下的坐标
+                tag_move_threshold: 0.010                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
                 offline_calib_data_num: 3000                             # 初始化基站，至少需要多少帧数据
                 offline_calib_move_3d_threshold: [10.0, 5.0, 3.0]        # 离线标定需要三轴分别运动多少里程，注：采集标定数据时一定要缓慢移动传感器平台！！！！
                 offline_calib_maxmin_3d_threshold: [4.0, 2.0, 1.0]       # 离线标定需要三轴坐标极差达到多少
@@ -93,7 +93,7 @@ robot_0:
                 online_calib_move_3d_threshold: [10.0, 10.0, 2.0]        # 在线标定需要三轴分别运动多少里程
                 ransac_sample_num: 100                                   # RANSAC采样内点数进行拟合
                 ransac_average_error_threshold: 0.10                     # RANSAC内点平均测距误差小于0.03m，停止迭代
-                use_calibrated_anchor: true                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
+                use_calibrated_anchor: false                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
                 calibrated_anchor1: [3.3618, -2.3243, 0.761323]          # 标定过的anchor坐标，地图系下
                 calibrated_anchor2: [3.97303, 0.41742, 0.738834]
                 calibrated_anchor3: [-2.74201, -1.32873, 0.780843]

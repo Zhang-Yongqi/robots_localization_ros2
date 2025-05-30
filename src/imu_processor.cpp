@@ -146,7 +146,7 @@ void IMUProcessor::imu_init(const MeasureGroup& meas, esekfom::esekf<state_ikfom
 
     cov_acc = cov_acc_scale;
     cov_gyr = cov_gyr_scale;
-    // ROS_INFO("IMU Initial Done");
+    std::cout << "IMU Initial Done" << std::endl;
 
     V3F initPoseT = V3F::Zero();
     M3F initPoseR = M3F::Zero();
@@ -337,20 +337,15 @@ bool IMUProcessor::init_pose(const MeasureGroup& meas, esekfom::esekf<state_ikfo
     /**********************************************************************/
     kf_state.change_P(init_P);
 
-    // ROS_INFO(
-    //     "Initialization Done: pos: %.4f %.4f %.4f"
-    //     "Gravity: %.4f %.4f %.4f %.4f; "
-    //     "mean_acc: %.4f %.4f %.4f; "
-    //     "mean_gyr: %.4f %.4f %.4f; "
-    //     "bias_acc covariance: %.4f %.4f %.4f; "
-    //     "bias_gyr covariance: %.4f %.4f %.4f; "
-    //     "acc covarience: %.8f %.8f %.8f; "
-    //     "gyr covarience: %.8f %.8f %.8f",
-    //     imu_state.pos[0], imu_state.pos[1], imu_state.pos[2], imu_state.grav[0], imu_state.grav[1],
-    //     imu_state.grav[2], mean_acc.norm(), mean_acc[0], mean_acc[1], mean_acc[2], mean_gyr[0],
-    //     mean_gyr[1], mean_gyr[2], cov_bias_acc[0], cov_bias_acc[1], cov_bias_acc[2], cov_bias_gyr[0],
-    //     cov_bias_gyr[1], cov_bias_gyr[2], cov_acc[0], cov_acc[1], cov_acc[2], cov_gyr[0], cov_gyr[1],
-    //     cov_gyr[2]);
+    std::cout << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", "
+              << imu_state.pos[2] << ", Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", "
+              << imu_state.grav[2] << ", mean_acc: " << mean_acc[0] << ", " << mean_acc[1] << ", "
+              << mean_acc[2] << ", mean_gyr: " << mean_gyr[0] << ", " << mean_gyr[1] << ", " << mean_gyr[2]
+              << ", bias_acc covariance: " << cov_bias_acc[0] << ", " << cov_bias_acc[1] << ", "
+              << cov_bias_acc[2] << ", bias_gyr covariance: " << cov_bias_gyr[0] << ", " << cov_bias_gyr[1]
+              << ", " << cov_bias_gyr[2] << ", acc covarience: " << cov_acc[0] << ", " << cov_acc[1] << ", "
+              << cov_acc[2] << ", gyr covarience: " << cov_gyr[0] << ", " << cov_gyr[1] << ", " << cov_gyr[2]
+              << std::endl;
     fout_init << "Initialization Done: pos:" << imu_state.pos[0] << ", " << imu_state.pos[1] << ", " << imu_state.pos[2]
               << std::endl
               << "Gravity: " << imu_state.grav[0] << ", " << imu_state.grav[1] << ", " << imu_state.grav[2] << std::endl
@@ -377,7 +372,6 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
   {
     return;
   }
-  // ROS_ASSERT(meas.lidar != nullptr);
 
   /********* zero velocity update **********/
   if (USE_ZUPT && check_zupt(zupt_imu_buffer, recent_avg_acc, recent_avg_gyr))
@@ -514,8 +508,9 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
                       // 使用离线标定的UWB基站坐标，只需采集一小段时间数据计算bias进行初始化
                       if (use_calibrated_anchor) {
                           if (try_to_initialize_bias(anchor_map[meas.anchor_id])) {
-                              // ROS_INFO("uwb anchor %d initialized!!! bias: %f", meas.anchor_id,
-                              //  anchor_map[meas.anchor_id].bias);
+                              std::cout << "uwb anchor" << meas.anchor_id
+                                        << "initialized!!! bias: " << anchor_map[meas.anchor_id].bias
+                                        << std::endl;
                               switch (meas.anchor_id) {
                                   case 1:
                                       imu_state.anchor1[4] = anchor_map[meas.anchor_id].bias;
@@ -545,9 +540,10 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
                               inited_anchor.head<3>() = anchor_map[meas.anchor_id].position;
                               inited_anchor[3] = 1.0;
                               inited_anchor[4] = anchor_map[meas.anchor_id].bias;
-                              // ROS_INFO("uwb anchor %d initialized!!! position: [%f, %f, %f], bias: %f",
-                              //  meas.anchor_id, inited_anchor[0], inited_anchor[1], inited_anchor[2],
-                              //  inited_anchor[4]);
+                              std::cout << "uwb anchor" << meas.anchor_id
+                                        << "initialized!!! position: " << inited_anchor[0] << ","
+                                        << inited_anchor[1] << "," << inited_anchor[2]
+                                        << "bias: " << inited_anchor[4] << std::endl;
                               fout_uwb_calib << "==================================================="
                                                 "=================="
                                              << std::endl;

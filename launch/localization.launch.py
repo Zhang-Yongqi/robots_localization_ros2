@@ -7,7 +7,9 @@ import os
 def generate_launch_description():
     pkg_share_dir = get_package_share_directory("robots_localization")
     config = os.path.join(pkg_share_dir, "config", "rse1r.yaml")
-    pcd_path = os.path.join(pkg_share_dir, "PCD", "2024-11-24_19-24-09_scans.pcd")
+    pcd_path = os.path.join(
+        pkg_share_dir, "PCD", "map.pcd"
+    )
     rviz_config = os.path.join(pkg_share_dir, "rviz", "localization.rviz")
 
     return LaunchDescription(
@@ -16,6 +18,7 @@ def generate_launch_description():
                 namespace="robot_0",
                 package="robots_localization",
                 executable="robots_localization_node",
+                # prefix=["xterm -e gdb -ex run --args"],
                 parameters=[config, {"pcd_path": pcd_path}],
                 output="screen",
             ),

@@ -455,8 +455,8 @@ void ransac_nonlinear_optimize_anchor(Eigen::Vector4d& anchor_estimate,
       score_min = score;
       best_estimate = local_estimate;
     }
-    // ROS_INFO("RANSAC iteration: %d, Inlier measurements size: %d, Score: %f", iter, inlier_meas.size(),
-    // score);
+    std::cout << "RANSAC iteration:" << iter << ", Inlier measurements size: " << inlier_meas.size()
+              << ", Score: " << score << std::endl;
     fout_uwb_calib << "RANSAC iteration: " << iter << ", Inlier measurements size: " << inlier_meas.size()
                    << ", Score: " << score << std::endl;
 
@@ -543,12 +543,12 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
 
   for (int i = 0; i < calib_data_group_num; i++)
   {
-      // ROS_INFO("traj[%d] data_num: %d, total_dist_3d: %f %f %f, maxmin_coor_3d: %f, %f, %f,
-      // near_measure_num: %d", i,
-      //          uwb_anchor.measurements[i].size(), uwb_anchor.total_dist_3d_history[i][0],
-      //          uwb_anchor.total_dist_3d_history[i][1], uwb_anchor.total_dist_3d_history[i][2],
-      //          uwb_anchor.maxmin_coor_3d_history[i][0], uwb_anchor.maxmin_coor_3d_history[i][1],
-      //          uwb_anchor.maxmin_coor_3d_history[i][2], uwb_anchor.near_measure_num_history[i]);
+      std::cout << "traj[" << i << "] data_num: " << uwb_anchor.measurements[i].size()
+                << ", total_dist_3d: " << uwb_anchor.total_dist_3d_history[i][0] << ", "
+                << uwb_anchor.total_dist_3d_history[i][1] << ", " << uwb_anchor.total_dist_3d_history[i][2]
+                << ", maxmin_coor_3d: " << uwb_anchor.maxmin_coor_3d_history[i][0] << ", "
+                << uwb_anchor.maxmin_coor_3d_history[i][1] << ", " << uwb_anchor.maxmin_coor_3d_history[i][2]
+                << ", near_measure_num : " << uwb_anchor.near_measure_num_history[i] << std::endl;
       fout_uwb_calib << "traj[" << i << "] data_num: " << uwb_anchor.measurements[i].size()
                      << ", total_dist_3d: " << uwb_anchor.total_dist_3d_history[i][0] << ", "
                      << uwb_anchor.total_dist_3d_history[i][1] << ", "
@@ -580,9 +580,9 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
     bool last_group_logged = false;
     for (int i = 0; i < calib_data_group_num - 1; i++)
     {
-        // ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, i,
-        // anchor_estimates[i][0],
-        //          anchor_estimates[i][1], anchor_estimates[i][2], anchor_estimates[i][3]);
+        std::cout << "uwb anchor " << uwb_anchor.id << ", traj[" << i << "] position: ["
+                  << anchor_estimates[i][0] << ", " << anchor_estimates[i][1] << ", "
+                  << anchor_estimates[i][2] << "], bias: " << anchor_estimates[i][3] << std::endl;
         fout_uwb_calib << "*********************************************************************"
                        << std::endl;
         fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << i << "] position: ["
@@ -592,9 +592,9 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
                        << std::endl;
         for (int j = i + 1; j < calib_data_group_num; j++) {
             if (j == calib_data_group_num - 1 && !last_group_logged) {
-                // ROS_INFO("uwb anchor %d, traj[%d] position: [%f, %f, %f], bias: %f", uwb_anchor.id, j,
-                // anchor_estimates[j][0],
-                //          anchor_estimates[j][1], anchor_estimates[j][2], anchor_estimates[j][3]);
+                std::cout << "uwb anchor " << uwb_anchor.id << ", traj[" << j << "] position: ["
+                          << anchor_estimates[j][0] << ", " << anchor_estimates[j][1] << ", "
+                          << anchor_estimates[j][2] << "], bias: " << anchor_estimates[j][3] << std::endl;
                 fout_uwb_calib << "*********************************************************************"
                                << std::endl;
                 fout_uwb_calib << "uwb anchor " << uwb_anchor.id << ", traj[" << j << "] position: ["
@@ -606,12 +606,14 @@ bool try_to_initialize_anchor(UWBAnchor& uwb_anchor)
                 last_group_logged = true;
             }
             V3D diff = anchor_estimates[i].head<3>() - anchor_estimates[j].head<3>();
-            // ROS_INFO("traj[%d]-[%d] calib diff: %f, %f, %f", i, j, diff.x(), diff.y(), diff.z());
+            std::cout << "traj[" << i << "]-[" << j << "] calib diff: " << diff.x() << ", " << diff.y()
+                      << ", " << diff.z() << std::endl;
             fout_uwb_calib << "traj[" << i << "]-[" << j << "] calib diff: " << diff.x() << ", " << diff.y()
                            << ", " << diff.z() << std::endl;
             if (diff.cwiseAbs().maxCoeff() > consistent_threshold) {
                 is_consistent = false;
-                // ROS_WARN("Inconsistent anchor estimates: diff > 0.5m between group %d and %d", i, j);
+                std::cout << "Inconsistent anchor estimates: diff > 0.5m between group " << i << " and " << j
+                          << std::endl;
                 fout_uwb_calib << "Inconsistent anchor estimates: diff > 0.5m between group " << i << " and "
                                << j << "\n\n"
                                << std::endl;
@@ -678,7 +680,8 @@ bool try_to_initialize_bias(UWBAnchor& uwb_anchor)
   int q3_idx = static_cast<int>((3 * n) / 4);
   double q1 = bias_meas[q1_idx];
   double q3 = bias_meas[q3_idx];
-  // ROS_INFO("q1: %f, q3: %f, q0: %f, q4: %f", q1, q3, bias_meas[0], bias_meas.back());
+  std::cout << "q1: " << q1 << ", q3: " << q3 << ", q0: " << bias_meas[0] << ", q4: " << bias_meas.back()
+            << std::endl;
   double iqr = q3 - q1;
   double lower_bound = q1 - 1.5 * iqr;
   double upper_bound = q3 + 1.5 * iqr;
@@ -693,7 +696,7 @@ bool try_to_initialize_bias(UWBAnchor& uwb_anchor)
 
   if (filtered_bias.empty())
   {
-      // ROS_WARN("filtered_bias empty, calib bias failed!!!");
+      std::cout << "filtered_bias empty, calib bias failed!!!" << std::endl;
       uwb_anchor.reset_measurements();
       return false;
   }
