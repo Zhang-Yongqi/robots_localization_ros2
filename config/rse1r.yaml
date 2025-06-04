@@ -37,7 +37,7 @@ robot_0:
                               0.0, 0.0, 1.0,
                               -1.0, 0.0, 0.0] # imu系下机器人的姿态
                 scan_publish_en: true # false: close all the point cloud output
-                dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
+                dense_publish_en: false # false: low down the points number in a global-frame point clouds scan.
                 scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
 
             pcd_save:
@@ -72,14 +72,14 @@ robot_0:
                 esti_uwb_offset: true      # 是否估计uwb与imu的平移外参
                 esti_uwb_anchor: false      # 是否估计anchor坐标
                 estimate_td: true
-                td: 0.020                   # t_UWB = t_IMU + td，单位:s
+                td: 0.000                   # t_UWB = t_IMU + td，单位:s
                 td_std: 0.010               # td的标准差，单位:s
                 uwb_range_std: 0.2
                 uwb_chi2_threshold: 20.0   # 卡方表，DoF1, 95%接受
 
                 # UWB基站初始化参数
                 uwb2imuT: [0.03, 0.00, -0.10]                            # IMU^p_UWB，即UWB标签在IMU系下的坐标
-                tag_move_threshold: 0.010                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
+                tag_move_threshold: 0.000                                # 初始化基站数据，tag和上一帧相比移动超过0.01m才保存
                 offline_calib_data_num: 3000                             # 初始化基站，至少需要多少帧数据
                 offline_calib_move_3d_threshold: [10.0, 5.0, 3.0]        # 离线标定需要三轴分别运动多少里程，注：采集标定数据时一定要缓慢移动传感器平台！！！！
                 offline_calib_maxmin_3d_threshold: [4.0, 2.0, 1.0]       # 离线标定需要三轴坐标极差达到多少
@@ -93,7 +93,7 @@ robot_0:
                 online_calib_move_3d_threshold: [10.0, 10.0, 2.0]        # 在线标定需要三轴分别运动多少里程
                 ransac_sample_num: 100                                   # RANSAC采样内点数进行拟合
                 ransac_average_error_threshold: 0.10                     # RANSAC内点平均测距误差小于0.03m，停止迭代
-                use_calibrated_anchor: false                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
+                use_calibrated_anchor: true                              # 是否使用离线标定过的anchor坐标，false则对anchor坐标进行标定
                 calibrated_anchor1: [3.3618, -2.3243, 0.761323]          # 标定过的anchor坐标，地图系下
                 calibrated_anchor2: [3.97303, 0.41742, 0.738834]
                 calibrated_anchor3: [-2.74201, -1.32873, 0.780843]

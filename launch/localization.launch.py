@@ -6,7 +6,7 @@ import os
 
 def generate_launch_description():
     pkg_share_dir = get_package_share_directory("robots_localization")
-    config = os.path.join(pkg_share_dir, "config", "rse1r.yaml")
+    config = os.path.join(pkg_share_dir, "config", "mid360.yaml")
     pcd_path = os.path.join(
         pkg_share_dir, "PCD", "map.pcd"
     )

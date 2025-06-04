@@ -41,6 +41,7 @@
     ```bash
     sudo apt install ccache
     ```
+
 - ceres
   
     ```bash
@@ -53,6 +54,8 @@
 
 Livox的imu数据重力单位是g，注意代码里的归一化用的norm是多少。
 
-IMU在点云坐标系下的位置为[0.011, 0.0234, -0.044] ，填写外参时注意代码中的基坐标系是哪个
+mid360的IMU在点云坐标系下的位置为[0.011, 0.0234, -0.044] ，填写外参时注意代码中的基坐标系是哪个
 
-header中的time是该帧雷达的最早时间，point的time是相对于其header的time的offset，unit: ms
+header中的time是该帧雷达的最早时间，point的time是相对于其header的time的offset，unit: ms。
+
+推荐编译方式: colcon build --symlink-install --cmake-args -G Ninja
