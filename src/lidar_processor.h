@@ -2,8 +2,8 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <robots_localization/msg/custom_msg.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #define IS_VALID(a) ((abs(a) > 1e8) ? true : false)
@@ -121,7 +121,7 @@ class LidarProcessor {
   LidarProcessor();
   ~LidarProcessor();
 
-  void process(const robots_localization::msg::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process(const sensor_msgs::msg::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
 
   // 雷达类型、扫描线数、时间单位
@@ -136,7 +136,7 @@ class LidarProcessor {
 
  private:
   void rs_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
-  void avia_handler(const robots_localization::msg::CustomMsg::ConstPtr &msg);
+  void avia_handler(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg);
   void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
   void unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);

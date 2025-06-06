@@ -69,6 +69,7 @@ set(ROS2_DEPENDENCIES
 )
 
 find_package(nlink_message REQUIRED)
+find_package(livox_ros_driver2 REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io)
 find_package(Sophus REQUIRED)
@@ -89,8 +90,6 @@ include_directories(
 
 set(MSG_FILES
   "msg/Pose6D.msg"
-  "msg/CustomPoint.msg"
-  "msg/CustomMsg.msg"
 )
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${MSG_FILES}
@@ -103,7 +102,7 @@ ${PROJECT_NAME} "rosidl_typesupport_cpp")
 add_subdirectory(src)
 
 add_executable(robots_localization_node src/robots_localization_node.cpp)
-ament_target_dependencies(robots_localization_node ${ROS2_DEPENDENCIES} nlink_message)
+ament_target_dependencies(robots_localization_node ${ROS2_DEPENDENCIES} nlink_message livox_ros_driver2)
 add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
 add_library(scan_aligner SHARED src/scan_aligner.cpp)
 add_library(imu_processor SHARED src/imu_processor.cpp)
@@ -113,7 +112,7 @@ ament_target_dependencies(imu_processor ${ROS2_DEPENDENCIES})
 target_link_libraries(scan_aligner fmt)
 ament_target_dependencies(scan_aligner ${ROS2_DEPENDENCIES})
 target_link_libraries(lidar_processor ${PCL_LIBRARIES})
-ament_target_dependencies(lidar_processor ${ROS2_DEPENDENCIES})
+ament_target_dependencies(lidar_processor ${ROS2_DEPENDENCIES} livox_ros_driver2)
 
 add_executable(test_uwb_jacobian src/test_uwb_jacobian.cpp)
 
