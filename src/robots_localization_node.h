@@ -15,6 +15,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp>
 #include <livox_ros_driver2/msg/custom_msg.hpp>
 #include <mutex>
 #include <nav_msgs/msg/path.hpp>
@@ -37,6 +38,8 @@ rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_wo
 rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudMap;
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped;
 rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
+rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pubElevationMap;
+rclcpp::TimerBase::SharedPtr elevation_map_timer;
 rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr pubIMUBias;
 rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl;
 rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox;
@@ -48,10 +51,11 @@ string root_dir = ROOT_DIR;
 string ns, lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
 
 bool time_sync_en = false;
-bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false;
+bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false, elevation_publish_en = false;
 bool extrinsic_est_en = true, runtime_pos_log = false, pcd_save_en = false, flg_exit = false, flg_EKF_inited = false;
 bool lidar_pushed, flg_first_scan = true, initialized = false, initializing_pose = false, first_pub = true;
 
+double elevation_resolution = 0.1, elevation_offset_z = 0.75;
 double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_surf_min = 0.0, filter_size_map_min = 0.0, cube_len = 0.0;
@@ -69,6 +73,7 @@ int init_num = 0;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT(Zero3f);
 
+vector<double> elevation_size(2, 0.0);
 vector<float> priorT(3, 0.0);
 vector<float> YAW_RANGE(3, 0.0);
 vector<float> priorR(9, 0.0);
@@ -97,7 +102,7 @@ mutex mtx_buffer;
 condition_variable sig_buffer;
 deque<double> time_buffer;                                         // 激光雷达数据
 deque<PointCloudXYZI::Ptr> lidar_buffer;                           // 雷达数据队列
-deque<sensor_msgs::msg::Imu::ConstPtr> imu_buffer;                 // IMU数据队列
+deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buffer;                 // IMU数据队列
 deque<std::pair<double, std::vector<UWBObservation>>> uwb_buffer;  // UWB数据队列
 
 // PointCloudXYZI: 点云坐标 + 信号强度形式
@@ -182,6 +187,8 @@ void publish_frame_body(
 
 void publish_frame_world_local(
     const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& pubLaserCloudFull_world);
+
+void publish_elevation_map(const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevationMap);
 
 // 观测模型
 void h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
@@ -552,6 +559,16 @@ class RobotsLocalizationNode : public rclcpp::Node {
         sub_pub_imu = this->create_publisher<nav_msgs::msg::Odometry>("odometry_imu", 20);
         pubIMUBias = this->create_publisher<geometry_msgs::msg::TwistStamped>("IMU_bias", 20);
         pubPath = this->create_publisher<nav_msgs::msg::Path>("path", 20);
+        pubElevationMap = this->create_publisher<std_msgs::msg::Float32MultiArray>("elevation_map", 10);
+        if (elevation_publish_en) {
+            elevation_map_timer = this->create_wall_timer(
+                std::chrono::milliseconds(20), 
+            [this]() { 
+            if (initialized && imu_only_ready && !need_reloc) {
+                publish_elevation_map(pubElevationMap); 
+            }
+        });
+        }
         tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
         signal(SIGINT, SigHandle);
@@ -576,11 +593,11 @@ class RobotsLocalizationNode : public rclcpp::Node {
     void points_cache_collect();
     void lasermap_fov_segment();
     void map_incremental();
-    void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstPtr& msg);
-    void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstPtr& msg) ;
-    void imu_cbk(const sensor_msgs::msg::Imu::ConstPtr& msg_in);
-    void uwb_cbk(const nlink_message::msg::LinktrackNodeframe2::ConstPtr& msg);
-    void mocap_cbk(const geometry_msgs::msg::PoseStamped::ConstPtr& msg);
+    void livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr& msg);
+    void standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg);
+    void imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr& msg_in);
+    void uwb_cbk(const nlink_message::msg::LinktrackNodeframe2::ConstSharedPtr& msg);
+    void mocap_cbk(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
     bool sync_packages(MeasureGroup& meas);
     void loadConfig();
     void mainProcess();

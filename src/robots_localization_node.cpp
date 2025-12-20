@@ -249,6 +249,84 @@ void publish_frame_world_local(
     }
 }
 
+void publish_elevation_map(
+    const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevationMap) {
+    static std::vector<float> elevation_data;
+    static std::vector<std::vector<float>> height_cells;
+
+
+    const V3D pos_robot = state_point_imu.pos + state_point_imu.rot * Robot_T_wrt_IMU;
+    const SO3 rot_robot = state_point_imu.rot * Robot_R_wrt_IMU;
+    Eigen::Quaterniond quat(rot_robot.matrix());
+    double siny_cosp = 2.0 * (quat.w() * quat.z() + quat.x() * quat.y());
+    double cosy_cosp = 1.0 - 2.0 * (quat.y() * quat.y() + quat.z() * quat.z());
+    double yaw = std::atan2(siny_cosp, cosy_cosp);
+    double cy = std::cos(yaw);
+    double sy = std::sin(yaw);
+    
+    int size_x = static_cast<int>(elevation_size[0] / elevation_resolution + 1);
+    int size_y = static_cast<int>(elevation_size[1] / elevation_resolution + 1);
+    int total_size = size_x * size_y;
+    float half_width = elevation_size[0] / 2.0f;
+    float half_height = elevation_size[1] / 2.0f;
+    float inv_res = 1.0f / elevation_resolution;
+
+    if (elevation_data.size() != static_cast<size_t>(total_size)) {
+        elevation_data.resize(total_size);
+        height_cells.resize(total_size);
+        for (auto& cell : height_cells) {
+            cell.reserve(64);
+        }
+    }
+    std::memset(elevation_data.data(), 0, total_size * sizeof(float));
+    for (auto& cell : height_cells) cell.clear();
+
+    float search_radius = std::sqrt(half_width * half_width + half_height * half_height);
+    
+    BoxPointType search_box;
+    search_box.vertex_min[0] = pos_robot(0) - search_radius;
+    search_box.vertex_min[1] = pos_robot(1) - search_radius;
+    search_box.vertex_min[2] = pos_robot(2) - 1.0 - elevation_offset_z;
+    search_box.vertex_max[0] = pos_robot(0) + search_radius;
+    search_box.vertex_max[1] = pos_robot(1) + search_radius;
+    search_box.vertex_max[2] = pos_robot(2) + 1.0 - elevation_offset_z;
+    
+    PointVector points_in_box;
+    ikdtree.Box_Search(search_box, points_in_box);
+    for (const auto& pt : points_in_box) {
+        const float dx_world = pt.x - pos_robot(0);
+        const float dy_world = pt.y - pos_robot(1);
+
+        const float dx = cy * dx_world + sy * dy_world;
+        const float dy = -sy * dx_world + cy * dy_world;
+        if (std::fabs(dx) > half_width || std::fabs(dy) > half_height) continue;
+
+        const int ix = static_cast<int>((dx + half_width) * inv_res + 0.5f);
+        const int iy = static_cast<int>((dy + half_height) * inv_res + 0.5f);
+        if (ix < 0 || ix >= size_x || iy < 0 || iy >= size_y) continue;
+
+        const float h = pos_robot(2) - pt.z - elevation_offset_z;
+        const int idx = iy * size_x + ix;
+        height_cells[idx].push_back(h);
+    }
+
+    for (int i = 0; i < total_size; i++) {
+        std::vector<float>& cells = height_cells[i];
+        if (cells.empty()) { 
+            std::cout<< "Empty cell at index " << i << std::endl; 
+            continue;
+        }
+        size_t index = static_cast<size_t>(cells.size() * 0.1);
+        std::nth_element(cells.begin(), cells.begin() + index, cells.end());
+        elevation_data[i] = cells[index];
+    }
+
+    std_msgs::msg::Float32MultiArray msg;
+    msg.data = elevation_data;
+
+    pubElevationMap->publish(msg);
+}
+
 void RobotsLocalizationNode::points_cache_collect() {
     PointVector points_history;
     ikdtree.acquire_removed_points(points_history);
@@ -348,7 +426,7 @@ void RobotsLocalizationNode::map_incremental() {
 }
 
 // livox激光雷达回调函数
-void RobotsLocalizationNode::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstPtr& msg) {
+void RobotsLocalizationNode::livox_pcl_cbk(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr& msg) {
     mtx_buffer.lock();
     scan_count++;
     double time_stamp =
@@ -383,7 +461,7 @@ void RobotsLocalizationNode::livox_pcl_cbk(const livox_ros_driver2::msg::CustomM
 }
 
 // 标准雷达回调函数
-void RobotsLocalizationNode::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstPtr& msg) {
+void RobotsLocalizationNode::standard_pcl_cbk(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& msg) {
     mtx_buffer.lock();
     scan_count++;
     double time_stamp =
@@ -404,14 +482,14 @@ void RobotsLocalizationNode::standard_pcl_cbk(const sensor_msgs::msg::PointCloud
 }
 
 // 接收IMU数据回调函数
-// ConstPtr: 智能指针
-void RobotsLocalizationNode::imu_cbk(const sensor_msgs::msg::Imu::ConstPtr& msg_in) {
+// ConstSharedPtr: 智能指针
+void RobotsLocalizationNode::imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr& msg_in) {
     if (initializing_pose) {
         return;
     }
 
     publish_count++;
-    sensor_msgs::msg::Imu::Ptr msg(new sensor_msgs::msg::Imu(*msg_in));
+    sensor_msgs::msg::Imu::SharedPtr msg(new sensor_msgs::msg::Imu(*msg_in));
     double time_stamp = static_cast<double>(msg_in->header.stamp.sec) +
                         static_cast<double>(msg_in->header.stamp.nanosec) * 1e-9;
     double final_time_sec = time_stamp - time_diff_lidar_to_imu;
@@ -494,7 +572,7 @@ void RobotsLocalizationNode::imu_cbk(const sensor_msgs::msg::Imu::ConstPtr& msg_
     }
 }
 
-void RobotsLocalizationNode::uwb_cbk(const nlink_message::msg::LinktrackNodeframe2::ConstPtr& msg) {
+void RobotsLocalizationNode::uwb_cbk(const nlink_message::msg::LinktrackNodeframe2::ConstSharedPtr& msg) {
     // 初始化之后才能获得每个UWB时刻的IMU位姿
     if (!initialized) return;
 
@@ -526,7 +604,7 @@ void RobotsLocalizationNode::uwb_cbk(const nlink_message::msg::LinktrackNodefram
     sig_buffer.notify_all();
 }
 
-void RobotsLocalizationNode::mocap_cbk(const geometry_msgs::msg::PoseStamped::ConstPtr& msg) {
+void RobotsLocalizationNode::mocap_cbk(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg) {
     // timestamp
     fout_mocap.precision(5);
     fout_mocap.setf(std::ios::fixed, std::ios::floatfield);
@@ -679,6 +757,12 @@ void RobotsLocalizationNode::loadConfig() {
     this->declare_parameter<bool>("mapping.mapping_en", false);
     mapping_en = this->get_parameter("mapping.mapping_en").as_bool();
     p_imu->mapping_en = mapping_en;
+    this->declare_parameter<double>("mapping.elevation_resolution", 0.1);
+    elevation_resolution = this->get_parameter("mapping.elevation_resolution").as_double();
+    this->declare_parameter<double>("mapping.elevation_offset_z", 0.75);
+    elevation_offset_z = this->get_parameter("mapping.elevation_offset_z").as_double();
+    this->declare_parameter<std::vector<double>>("mapping.elevation_size", std::vector<double>());
+    elevation_size = this->get_parameter("mapping.elevation_size").as_double_array();
 
     this->declare_parameter<bool>("pcd_save.pcd_save_en", false);
     pcd_save_en = this->get_parameter("pcd_save.pcd_save_en").as_bool();
@@ -697,6 +781,8 @@ void RobotsLocalizationNode::loadConfig() {
     dense_pub_en = this->get_parameter("publish.dense_publish_en").as_bool();
     this->declare_parameter<bool>("publish.scan_bodyframe_pub_en", true);
     scan_body_pub_en = this->get_parameter("publish.scan_bodyframe_pub_en").as_bool();
+    this->declare_parameter<bool>("publish.elevation_publish_en", false);
+    elevation_publish_en = this->get_parameter("publish.elevation_publish_en").as_bool();
 
     this->declare_parameter<int>("max_iteration", 4);
     NUM_MAX_ITERATIONS = this->get_parameter("max_iteration").as_int();

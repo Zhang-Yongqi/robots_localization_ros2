@@ -17,7 +17,7 @@ robot_0:
                 point_filter_num: 1
     
             mapping: # 建图和定位参数
-                mapping_en: true # 是否开启建图功能
+                mapping_en: false # 是否开启建图功能
                 acc_cov: 0.1
                 gyr_cov: 0.1
                 b_acc_cov: 0.0001
@@ -27,16 +27,20 @@ robot_0:
                 extrinsic_est_en: false # true: enable the online estimation of IMU-LiDAR extrinsic
                 extrinsic_T: [-0.011, -0.0234, 0.044] # DJI给的
                 extrinsic_R: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+                elevation_size: [1.6, 1.0]
+                elevation_resolution: 0.1
+                elevation_offset_z: 0.75
     
             publish:
                 path_en: true
-                imu2robot_T: [0.0, 0.0, 0.0] # imu系下机器人的位置
-                imu2robot_R: [1.0, 0.0, 0.0,
+                imu2robot_T: [0.2159, 0.0, -0.0752] # imu系下机器人的位置
+                imu2robot_R: [0.0, 0.0, -1.0,
                               0.0, 1.0, 0.0,
-                              0.0, 0.0, 1.0] # imu系下机器人的姿态
+                              1.0, 0.0, 0.0] # imu系下机器人的姿态
                 scan_publish_en: true # false: close all the point cloud output
                 dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
                 scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
+                elevation_publish_en: true # true: output elevation map
     
             pcd_save:
                 pcd_save_en: true
