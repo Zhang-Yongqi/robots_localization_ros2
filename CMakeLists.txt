@@ -1,18 +1,37 @@
 cmake_minimum_required(VERSION 3.8)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -O3 -march=native -pthread -fexceptions -fPIC")
-set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+    message(STATUS "Using ccache: ${CCACHE_PROGRAM}")
+endif()
 
 project(robots_localization)
 
-set(CMAKE_UNITY_BUILD ON)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE "Release")
-
-add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
-
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -pthread -fexceptions -fPIC")
+
+find_program(MOLD_LINKER mold)
+find_program(LLD_LINKER lld)
+if(MOLD_LINKER)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=mold")
+    message(STATUS "Using mold linker")
+elseif(LLD_LINKER)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+    message(STATUS "Using lld linker")
+endif()
+
+set(CMAKE_UNITY_BUILD ON)
+
+add_definitions(-DROOT_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/\")
+add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)|(aarch64)|(AARCH64)" )
@@ -21,12 +40,12 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)|(aarch64)|(AARCH6
   message("Processer number:  ${N}")
   if(N GREATER 4)
     add_definitions(-DMP_EN)
-    add_definitions(-DMP_PROC_NUM=8)
-    message("core for MP: 8")
+    add_definitions(-DMP_PROC_NUM=6)
+    message("core for MP: 6")
   elseif(N GREATER 3)
     add_definitions(-DMP_EN)
-    add_definitions(-DMP_PROC_NUM=3)
-    message("core for MP: 3")
+    add_definitions(-DMP_PROC_NUM=4)
+    message("core for MP: 4")
   else()
     add_definitions(-DMP_PROC_NUM=2)
   endif()
@@ -121,6 +140,8 @@ target_precompile_headers(robots_localization_node PUBLIC
 <pcl/common/transforms.h>
 <pcl/filters/voxel_grid.h>
 <pcl/io/pcd_io.h>
+<pcl/point_types.h>
+<pcl/point_cloud.h>
 <geometry_msgs/msg/pose_stamped.hpp>
 <geometry_msgs/msg/transform_stamped.hpp>
 <geometry_msgs/msg/twist_stamped.hpp>
@@ -128,10 +149,6 @@ target_precompile_headers(robots_localization_node PUBLIC
 <nav_msgs/msg/path.hpp>
 <sensor_msgs/msg/imu.hpp>
 <sensor_msgs/msg/point_cloud2.hpp>
-src/scan_aligner.h
-src/imu_processor.h
-src/lidar_processor.h
-src/robots_localization_node.h
 include/common_lib.h
 include/so3_math.h
 include/use-ikfom.h
