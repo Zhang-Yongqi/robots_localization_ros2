@@ -8,13 +8,13 @@ LidarProcessor::~LidarProcessor()
 {
 }
 
-void LidarProcessor::process(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg,
+void LidarProcessor::process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg,
                              PointCloudXYZI::Ptr &pcl_out) {
     avia_handler(msg);
     *pcl_out = pl_surf;
 }
 
-void LidarProcessor::process(const sensor_msgs::msg::PointCloud2::ConstPtr &msg,
+void LidarProcessor::process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg,
                              PointCloudXYZI::Ptr &pcl_out) {
     switch (time_unit)
     {
@@ -56,7 +56,7 @@ void LidarProcessor::process(const sensor_msgs::msg::PointCloud2::ConstPtr &msg,
     *pcl_out = pl_surf;
 }
 
-void LidarProcessor::rs_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
+void LidarProcessor::rs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -155,7 +155,7 @@ void LidarProcessor::rs_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &m
     }
 }
 
-void LidarProcessor::unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
+void LidarProcessor::unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -200,7 +200,7 @@ void LidarProcessor::unilidar_handler(const sensor_msgs::msg::PointCloud2::Const
     // std::endl;
 }
 
-void LidarProcessor::avia_handler(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg) {
+void LidarProcessor::avia_handler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
@@ -245,7 +245,7 @@ void LidarProcessor::avia_handler(const livox_ros_driver2::msg::CustomMsg::Const
     }
 }
 
-void LidarProcessor::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
+void LidarProcessor::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg) {
     // 清除点云缓存
     pl_surf.clear();
     pl_corn.clear();
@@ -288,7 +288,7 @@ void LidarProcessor::oust64_handler(const sensor_msgs::msg::PointCloud2::ConstPt
     }
 }
 
-void LidarProcessor::velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg) {
+void LidarProcessor::velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();

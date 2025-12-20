@@ -289,7 +289,7 @@ struct MeasureGroup  // Lidar data and imu dates for the curent process
   double lidar_beg_time;
   double lidar_end_time;
   PointCloudXYZI::Ptr lidar;
-  deque<sensor_msgs::msg::Imu::ConstPtr> imu;
+  deque<sensor_msgs::msg::Imu::ConstSharedPtr> imu;
   deque<std::pair<double, std::vector<UWBObservation>>> uwb;  // <时间戳，当前帧所有可用基站观测>
 };
 
@@ -805,7 +805,7 @@ bool check_zupt(const deque<IMU>& imu_data, V3D& average_acc, V3D& average_gyr)
   return true;
 }
 
-void interpolate_imu(sensor_msgs::msg::Imu::ConstPtr head_imu, sensor_msgs::msg::Imu::ConstPtr tail_imu,
+void interpolate_imu(sensor_msgs::msg::Imu::ConstSharedPtr head_imu, sensor_msgs::msg::Imu::ConstSharedPtr tail_imu,
                      double mid_time, sensor_msgs::msg::Imu& mid_imu) {
     double t_head = static_cast<double>(head_imu->header.stamp.sec) +
                     static_cast<double>(head_imu->header.stamp.nanosec) * 1e-9;

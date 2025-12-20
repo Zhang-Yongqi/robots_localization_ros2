@@ -121,8 +121,8 @@ class LidarProcessor {
   LidarProcessor();
   ~LidarProcessor();
 
-  void process(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
-  void process(const sensor_msgs::msg::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg, PointCloudXYZI::Ptr &pcl_out);
 
   // 雷达类型、扫描线数、时间单位
   int lidar_type, N_SCANS, SCAN_RATE, time_unit, point_filter_num;
@@ -135,10 +135,10 @@ class LidarProcessor {
   PointCloudXYZI pl_buff[128];  // maximum 128 line lidar
 
  private:
-  void rs_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
-  void avia_handler(const livox_ros_driver2::msg::CustomMsg::ConstPtr &msg);
-  void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
-  void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
-  void unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstPtr &msg);
+  void rs_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  void avia_handler(const livox_ros_driver2::msg::CustomMsg::ConstSharedPtr &msg);
+  void oust64_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  void velodyne_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
+  void unilidar_handler(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &msg);
 };
 

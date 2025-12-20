@@ -54,7 +54,7 @@ class IMUProcessor
 
     void process(MeasureGroup &meas, esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state, PointCloudXYZI &pcl_out);
 
-    bool process_imu_only(const sensor_msgs::msg::Imu::Ptr imu_data,
+    bool process_imu_only(const sensor_msgs::msg::Imu::SharedPtr imu_data,
                           esekfom::esekf<state_ikfom, 12, input_ikfom> &kf_state);
 
     Eigen::Matrix<double, 12, 12> Q;
@@ -79,7 +79,7 @@ class IMUProcessor
     M3F gravR;
 
   private:
-   sensor_msgs::msg::Imu::ConstPtr last_imu_, last_imu_only_;
+   sensor_msgs::msg::Imu::ConstSharedPtr last_imu_, last_imu_only_;
    vector<Pose6D> IMUpose;
    V3D acc_s_last, angvel_last;
    double last_lidar_end_time_;

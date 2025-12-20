@@ -25,8 +25,7 @@ IMUProcessor::IMUProcessor() : b_first_frame_(true)
   auto time = std::chrono::system_clock::to_time_t(now);
   struct tm tm;
   localtime_r(&time, &tm);
-  char formattedTime[20];
-  char* timePtr = formattedTime;
+  char timePtr[80];
   sprintf(timePtr, "%4.4d-%2.2d-%2.2d_%2.2d-%2.2d-%2.2d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
           tm.tm_min, tm.tm_sec);
   timeStr = timePtr;
@@ -728,7 +727,7 @@ void IMUProcessor::process(MeasureGroup& meas, esekfom::esekf<state_ikfom, 12, i
   }
 }
 
-bool IMUProcessor::process_imu_only(const sensor_msgs::msg::Imu::Ptr imu_data,
+bool IMUProcessor::process_imu_only(const sensor_msgs::msg::Imu::SharedPtr imu_data,
                                     esekfom::esekf<state_ikfom, 12, input_ikfom>& kf_state) {
     /*** Initialize IMU pose ***/
     state_ikfom imu_state = kf_state.get_x_imu();
