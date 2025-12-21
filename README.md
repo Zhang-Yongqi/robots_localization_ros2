@@ -9,7 +9,7 @@
 
 ## 环境配置
 
-- Sophs
+- Sophus
 
     ```bash
     git clone https://github.com/strasdat/Sophus.git
@@ -20,6 +20,8 @@
     make
     sudo make install
     ```
+
+    尽量选择较老版本。
 
 - fmt
 

@@ -103,7 +103,6 @@ include_directories(
   ${Sophus_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
   include
-  "usr/local/include/fmt"
   "src"
   )
 
@@ -126,9 +125,9 @@ add_library(ikd_Tree SHARED include/ikd-Tree/ikd_Tree.cpp)
 add_library(scan_aligner SHARED src/scan_aligner.cpp)
 add_library(imu_processor SHARED src/imu_processor.cpp)
 add_library(lidar_processor SHARED src/lidar_processor.cpp)
-target_link_libraries(imu_processor fmt)
+target_link_libraries(imu_processor fmt::fmt)
 ament_target_dependencies(imu_processor ${ROS2_DEPENDENCIES})
-target_link_libraries(scan_aligner fmt)
+target_link_libraries(scan_aligner fmt::fmt)
 ament_target_dependencies(scan_aligner ${ROS2_DEPENDENCIES})
 target_link_libraries(lidar_processor ${PCL_LIBRARIES})
 ament_target_dependencies(lidar_processor ${ROS2_DEPENDENCIES} livox_ros_driver2)
@@ -139,6 +138,8 @@ add_executable(test_uwb_jacobian src/test_uwb_jacobian.cpp)
 target_precompile_headers(robots_localization_node PUBLIC
 <pcl/common/transforms.h>
 <pcl/filters/voxel_grid.h>
+<pcl/filters/passthrough.h>
+<pcl/filters/statistical_outlier_removal.h>
 <pcl/io/pcd_io.h>
 <pcl/point_types.h>
 <pcl/point_cloud.h>
@@ -147,6 +148,7 @@ target_precompile_headers(robots_localization_node PUBLIC
 <geometry_msgs/msg/twist_stamped.hpp>
 <geometry_msgs/msg/vector3.hpp>
 <nav_msgs/msg/path.hpp>
+<nav_msgs/msg/grid_cells.hpp>
 <sensor_msgs/msg/imu.hpp>
 <sensor_msgs/msg/point_cloud2.hpp>
 include/common_lib.h
