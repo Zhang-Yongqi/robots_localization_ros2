@@ -38,9 +38,9 @@ robot_0:
                               0.0, 1.0, 0.0,
                               1.0, 0.0, 0.0] # imu系下机器人的姿态
                 scan_publish_en: true # false: close all the point cloud output
-                dense_publish_en: true # false: low down the points number in a global-frame point clouds scan.
-                scan_bodyframe_pub_en: true # true: output the point cloud scans in IMU-body-frame
-                elevation_publish_en: true # true: output elevation map
+                dense_publish_en: false # false: low down the points number in a global-frame point clouds scan.
+                scan_bodyframe_pub_en: false # true: output the point cloud scans in IMU-body-frame
+                elevation_publish_en: false # true: output elevation map
     
             pcd_save:
                 pcd_save_en: true
@@ -55,7 +55,7 @@ robot_0:
             runtime_pos_log_enable: false
     
             prior:
-                prior_T: [0.0 ,0.0, 0.0]
+                prior_T: [0.0 ,0.0, 0.75]
                 estimateGrav: true
                 prior_R: [1.0 ,0.0, 0.0,
                           0.0 ,1.0, 0.0,
