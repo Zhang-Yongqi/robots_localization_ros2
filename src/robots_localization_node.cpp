@@ -322,8 +322,9 @@ void publish_frame_world_local(
     }
 }
 
-void publish_elevation_map(
-    const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevationMap) {
+void publish_elevation(
+    const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevation,
+    const rclcpp::Publisher<nav_msgs::msg::GridCells>::SharedPtr& pubElevationMap) {
 
     const V3D pos_robot = state_point_imu.pos + state_point_imu.rot * Robot_T_wrt_IMU;
     const SO3 rot_robot = state_point_imu.rot * Robot_R_wrt_IMU;
@@ -331,30 +332,46 @@ void publish_elevation_map(
     double yaw = std::atan2(2.0 * (quat.w() * quat.z() + quat.x() * quat.y()),
                            1.0 - 2.0 * (quat.y() * quat.y() + quat.z() * quat.z()));
     double cy = std::cos(yaw), sy = std::sin(yaw);
-    int size_x = static_cast<int>(elevation_size[0] / elevation_resolution + 1);
-    int size_y = static_cast<int>(elevation_size[1] / elevation_resolution + 1);
-    float half_width = elevation_size[0] / 2.0f;
-    float half_height = elevation_size[1] / 2.0f;
-    std::vector<float> local_elevation(size_x * size_y, 0.0f);
 
-    for (int iy = 0; iy < size_y; ++iy) {
-        for (int ix = 0; ix < size_x; ++ix) {
-            float lx = ix * elevation_resolution - half_width;
-            float ly = iy * elevation_resolution - half_height;
+    int size_x = static_cast<int>(elevation_size[0] / elevation_resolution) + 1;
+    int size_y = static_cast<int>(elevation_size[1] / elevation_resolution) + 1;
+    float start_x = -(size_x - 1) / 2.0f * elevation_resolution;
+    float start_y = -(size_y - 1) / 2.0f * elevation_resolution;
+
+    std::vector<float> local_elevation(size_x * size_y, 0.0f);
+    nav_msgs::msg::GridCells viz_msg;
+    viz_msg.header.frame_id = "world";
+    viz_msg.cell_width = elevation_resolution;
+    viz_msg.cell_height = elevation_resolution;
+    viz_msg.cells.resize(size_x * size_y);
+    for (int j = 0; j < size_y; ++j) {
+        for (int i = 0; i < size_x; ++i) {
+            float lx = start_x + i * elevation_resolution;
+            float ly = start_y + j * elevation_resolution;
             
             float wx = pos_robot(0) + cy * lx - sy * ly;
             float wy = pos_robot(1) + sy * lx + cy * ly;
             
+            int idx = j * size_x + i;
+            viz_msg.cells[idx].x = wx;
+            viz_msg.cells[idx].y = wy;
+            viz_msg.cells[idx].z = 0.0;
+
             float elevation;
             if (global_elevation_map.getElevation(wx, wy, elevation)) {
-                local_elevation[iy * size_x + ix] = pos_robot(2) - elevation - elevation_offset_z;
+                float dist = pos_robot(2) - elevation - elevation_offset_z;
+                local_elevation[idx] = std::clamp(dist, -1.0f, 1.0f);
+                viz_msg.cells[idx].z = elevation;
             }
         }
     }
 
     std_msgs::msg::Float32MultiArray msg;
     msg.data = local_elevation;
-    pubElevationMap->publish(msg);
+    pubElevation->publish(msg);
+    if (elevation_viz_pub_en){
+        pubElevationMap->publish(viz_msg);
+    }
 }
 
 void h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data) {
@@ -1084,6 +1101,8 @@ void RobotsLocalizationNode::loadConfig() {
     scan_body_pub_en = this->get_parameter("publish.scan_bodyframe_pub_en").as_bool();
     this->declare_parameter<bool>("publish.elevation_publish_en", false);
     elevation_publish_en = this->get_parameter("publish.elevation_publish_en").as_bool();
+    this->declare_parameter<bool>("publish.elevation_viz_pub_en", false);
+    elevation_viz_pub_en = this->get_parameter("publish.elevation_viz_pub_en").as_bool();
 
     this->declare_parameter<int>("max_iteration", 4);
     NUM_MAX_ITERATIONS = this->get_parameter("max_iteration").as_int();

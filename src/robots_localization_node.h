@@ -39,9 +39,10 @@ rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_gl
 rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_body;
 rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudFull_world;
 rclcpp::Publisher<nav_msgs::msg::GridCells>::SharedPtr pubGlobalElevationMap;
+rclcpp::Publisher<nav_msgs::msg::GridCells>::SharedPtr pubElevationMap;
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubOdomAftMapped;
 rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pubPath;
-rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pubElevationMap;
+rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr pubElevation;
 rclcpp::TimerBase::SharedPtr elevation_map_timer;
 rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr pubIMUBias;
 rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_pcl;
@@ -54,11 +55,11 @@ string root_dir = ROOT_DIR;
 string ns, lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
 
 bool time_sync_en = false;
-bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false, elevation_publish_en = false;
+bool path_en = false, scan_pub_en = false, dense_pub_en = false, scan_body_pub_en = false, mapping_en = false, elevation_publish_en = false, elevation_viz_pub_en = false;
 bool extrinsic_est_en = true, runtime_pos_log = false, pcd_save_en = false, flg_exit = false, flg_EKF_inited = false;
 bool lidar_pushed, flg_first_scan = true, initialized = false, initializing_pose = false, first_pub = true;
 
-double elevation_resolution = 0.1, elevation_offset_z = 0.75, global_elevation_resolution = 0.01, global_elevation_max_x = 10.0, global_elevation_max_y = 5.0, global_elevation_max_z = 2.0;
+double elevation_resolution = 0.1, elevation_offset_z = 0.75, global_elevation_resolution = 0.01, global_elevation_max_x = 8.0, global_elevation_max_y = 3.0, global_elevation_max_z = 2.0;
 double time_diff_lidar_to_imu = 0.0;
 double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
 double fov_deg = 0.0, filter_size_surf_min = 0.0, filter_size_map_min = 0.0, cube_len = 0.0;
@@ -220,7 +221,8 @@ void publish_frame_body(
 void publish_frame_world_local(
     const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr& pubLaserCloudFull_world);
 
-void publish_elevation_map(const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevationMap);
+void publish_elevation(const rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr& pubElevation,
+                       const rclcpp::Publisher<nav_msgs::msg::GridCells>::SharedPtr& pubElevationMap);
 
 // 观测模型
 void h_share_model(state_ikfom& s, esekfom::dyn_share_datastruct<double>& ekfom_data);
@@ -345,7 +347,8 @@ class RobotsLocalizationNode : public rclcpp::Node {
         pubIMUBias = this->create_publisher<geometry_msgs::msg::TwistStamped>("IMU_bias", 20);
         pubPath = this->create_publisher<nav_msgs::msg::Path>("path", 20);
         pubGlobalElevationMap = this->create_publisher<nav_msgs::msg::GridCells>("elevation", qos_profile);
-        pubElevationMap = this->create_publisher<std_msgs::msg::Float32MultiArray>("elevation_body", 20);
+        pubElevationMap = this->create_publisher<nav_msgs::msg::GridCells>("elevation_body", 20);
+        pubElevation = this->create_publisher<std_msgs::msg::Float32MultiArray>("elevation_data", 20);
         tf_broadcaster = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
         if (!mapping_en && elevation_publish_en) {
             if (global_elevation_map.data.empty()) {
@@ -375,7 +378,7 @@ class RobotsLocalizationNode : public rclcpp::Node {
                 std::chrono::milliseconds(20), 
             [this]() { 
             if (initialized && imu_only_ready && !need_reloc) {
-                    publish_elevation_map(pubElevationMap); 
+                    publish_elevation(pubElevation, pubElevationMap);
                 }
             });
         }
