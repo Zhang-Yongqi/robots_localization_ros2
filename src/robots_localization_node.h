@@ -14,6 +14,7 @@
 #include <deque>
 #include <fstream>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
@@ -50,6 +51,7 @@ rclcpp::Subscription<livox_ros_driver2::msg::CustomMsg>::SharedPtr sub_pcl_livox
 rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub_imu;
 rclcpp::Subscription<nlink_message::msg::LinktrackNodeframe2>::SharedPtr sub_uwb;
 rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_mocap;
+rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_initial_pose;
 
 string root_dir = ROOT_DIR;
 string ns, lid_topic, imu_topic, reloc_topic, mode_topic, pcd_path;
@@ -76,6 +78,7 @@ bool need_reloc = false, imu_only_ready = false, initT_flag = false;
 int init_num = 0;
 float point_num = 0.0f, point_valid_num = 0.0f, point_valid_proportion = 0.0f;
 V3F reloc_initT(Zero3f);
+M3F reloc_initR = Eye3f;
 
 vector<double> elevation_size(2, 0.0);
 vector<float> priorT(3, 0.0);
@@ -399,6 +402,9 @@ class RobotsLocalizationNode : public rclcpp::Node {
             sub_mocap =
                 this->create_subscription<geometry_msgs::msg::PoseStamped>(mocap_topic, 200, std::bind(&RobotsLocalizationNode::mocap_cbk, this, std::placeholders::_1));
 
+        sub_initial_pose = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            "/initialpose", 10, std::bind(&RobotsLocalizationNode::initial_pose_cbk, this, std::placeholders::_1));
+
         std::thread mainThread(&RobotsLocalizationNode::mainProcessThread, this);
         mainThread.detach();
     }
@@ -410,6 +416,7 @@ class RobotsLocalizationNode : public rclcpp::Node {
     void imu_cbk(const sensor_msgs::msg::Imu::ConstSharedPtr& msg_in);
     void uwb_cbk(const nlink_message::msg::LinktrackNodeframe2::ConstSharedPtr& msg);
     void mocap_cbk(const geometry_msgs::msg::PoseStamped::ConstSharedPtr& msg);
+    void initial_pose_cbk(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr& msg);
     bool sync_packages(MeasureGroup& meas);
     void loadConfig();
     void mainProcess();

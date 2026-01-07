@@ -1020,6 +1020,21 @@ bool RobotsLocalizationNode::sync_packages(MeasureGroup& meas) {
     return true;
 }
 
+void RobotsLocalizationNode::initial_pose_cbk(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr& msg) {
+    float x = msg->pose.pose.position.x;
+    float y = msg->pose.pose.position.y;
+    float z = msg->pose.pose.position.z;
+
+    reloc_initT = V3F(x, y, z);
+
+    Eigen::Quaternionf q(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
+                         msg->pose.pose.orientation.z);
+    reloc_initR = q.toRotationMatrix();
+
+    need_reloc = true;
+    std::cout << "Received initial pose: " << x << ", " << y << ", " << z << std::endl;
+}
+
 void RobotsLocalizationNode::loadConfig() {
     // 参数加载
     this->declare_parameter<std::string>("common.namespace", "robot_0");
@@ -1269,7 +1284,7 @@ void RobotsLocalizationNode::mainProcess() {
                     initialized = false;
                     imu_only_ready = false;
                     p_imu->reset();
-                    p_imu->set_init_pose(reloc_initT, prior_R);
+                    p_imu->set_init_pose(reloc_initT, reloc_initR);
                     p_imu->set_extrinsic(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU);
                     p_imu->set_gyr_cov(V3D(gyr_cov, gyr_cov, gyr_cov));
                     p_imu->set_acc_cov(V3D(acc_cov, acc_cov, acc_cov));
