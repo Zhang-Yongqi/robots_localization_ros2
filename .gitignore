@@ -37,6 +37,8 @@
 *.mp4
 *.pcd
 map
+!PCD/map_ikdtree.pcd
+!PCD/garden_ikdtree.pcd
 
 # Executables
 *.exe
